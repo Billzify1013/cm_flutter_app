@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "743937583356",
+    "project_id": "billzify-app",
+    "storage_bucket": "billzify-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:743937583356:android:0c33049c9ab1767d178f79",
+        "android_client_info": {
+          "package_name": "com.cmapps.cm_flutter_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApGALb-j2BmOUKaFJbGs-xDm5EsD6oCu0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
