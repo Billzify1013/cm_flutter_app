@@ -34,10 +34,10 @@ jobs:
         run: flutter build appbundle --release
 
       - name: Upload to Google Play
-        uses: r0adkll/upload-google-play@v1.5.0
-        with:
-          serviceAccountJson: ${{ secrets.PLAY_STORE_KEY }}
-          packageName: com.billzify.cm
-          releaseFiles: build/app/outputs/bundle/release/app-release.aab
-          track: internal
-          status: completed
+          uses: r0adkll/upload-google-play@v1
+          with:
+            serviceAccountJson: ${{ secrets.PLAY_STORE_KEY }}
+            packageName: com.billzify.cm
+            releaseFiles: build/app/outputs/bundle/release/app-release.aab
+            track: internal
+            status: completed
