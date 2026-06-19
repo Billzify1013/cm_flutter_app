@@ -31,13 +31,13 @@ jobs:
         run: flutter build apk --release
 
       - name: Build AAB
-        run: flutter build appbundle --release
+        run: flutter build appbundle --release --no-strip
 
       - name: Upload to Google Play
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJson: ${{ secrets.PLAY_STORE_KEY }}
           packageName: com.billzify.cm
-          releaseFiles: app/outputs/bundle/release/app-release.aab
+          releaseFiles: build/app/outputs/bundle/release/app-release.aab
           tracks: internal
           status: completed
