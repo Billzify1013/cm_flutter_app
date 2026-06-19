@@ -30,10 +30,13 @@ jobs:
       - name: Build AAB
         run: flutter build appbundle --release
 
+      - name: Write service account key
+        run: echo '${{ secrets.PLAY_STORE_KEY }}' > service-account.json
+
       - name: Upload to Google Play
         uses: r0adkll/upload-google-play@v1
         with:
-          serviceAccountJson: ${{ secrets.PLAY_STORE_KEY }}
+          serviceAccountJson: service-account.json
           packageName: com.billzify.cm
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           tracks: internal
