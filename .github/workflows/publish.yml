@@ -27,9 +27,6 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Build APK
-        run: flutter build apk --release
-
       - name: Build AAB
         run: flutter build appbundle --release
 
