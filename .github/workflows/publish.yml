@@ -3,8 +3,8 @@ name: Build & Deploy to Google Play
 on:
   push:
     branches:
-      - main
       - master
+      - main
 
 jobs:
   build:
@@ -21,7 +21,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'latest'
+          flutter-version: '3.19.0'
 
       - name: Get dependencies
         run: flutter pub get
@@ -39,3 +39,4 @@ jobs:
           packageName: com.billzify.cm
           releaseFiles: build/app/outputs/bundle/release/app-release.aab
           track: internal
+          distribution: 100
