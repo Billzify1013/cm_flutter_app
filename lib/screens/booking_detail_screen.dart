@@ -1080,24 +1080,15 @@ class _S extends State<BookingDetailScreen> {
                   case 'pay': _addPayment(); break;
                   case 'guest': _editGuest(); break;
                   case 'dates': _editDates(); break;
-                  // case 'amounts': _editAmounts(); break;
                   case 'comm': _editCommission(); break;
+                  case 'category': _changeCategorySheet(); break;  // ✅ ADD YEH
                   case 'invoice': _invoice(); break;
                   case 'create_invoice': _createInvoice(); break;
                   case 'cancel_invoice': _cancelInvoice(); break;
                   case 'voucher': _voucher(); break;
-                  case 'product':
-                    final result = await Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => PosScreen(
-                          bookingId: _b['id']?.toString() ?? '',
-                          guestName: _b['guest_name']?.toString() ?? '',
-                        )));
-                    if (result == true) _load();
-                    break;
+                  case 'product': /* ... */ break;
                   case 'bill': _editBill(); break;
-                  case 'gst':
-                    _isInvoiceCreated ? _invoiceGst() : _guestGst();
-                    break;
+                  case 'gst': _isInvoiceCreated ? _invoiceGst() : _guestGst(); break;
                   case 'cancel': _cancelBooking(); break;
                   case 'revoke': _revokeBooking(); break;
                 }
