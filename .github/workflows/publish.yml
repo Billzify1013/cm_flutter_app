@@ -31,7 +31,7 @@ jobs:
         run: flutter build apk --release
 
       - name: Build AAB
-        run: flutter build appbundle --release --no-strip
+        run: flutter build appbundle --release
 
       - name: Upload to Google Play
         uses: r0adkll/upload-google-play@v1
