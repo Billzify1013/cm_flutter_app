@@ -38,6 +38,6 @@ jobs:
         with:
           serviceAccountJson: ${{ secrets.PLAY_STORE_KEY }}
           packageName: com.billzify.cm
-          releaseFiles: build/app/outputs/bundle/release/app-release.aab
+          releaseFiles: app/outputs/bundle/release/app-release.aab
           tracks: internal
           status: completed
