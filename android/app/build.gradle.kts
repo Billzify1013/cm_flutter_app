@@ -32,8 +32,8 @@ android {
         applicationId = "com.billzify.cm"
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.3"
     }
 
     signingConfigs {
@@ -48,8 +48,20 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
+            isMinifyEnabled = false
             isShrinkResources = false
+        }
+    }
+
+    bundle {
+        language {
+            enableSplit = false
+        }
+        density {
+            enableSplit = false
+        }
+        abi {
+            enableSplit = false
         }
     }
 
