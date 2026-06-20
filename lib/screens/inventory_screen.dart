@@ -382,6 +382,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   key: ValueKey('a|$_rev|${_key(d, cat)}'),
                   initialValue: v['available'].toString(),
                   keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
                   decoration: const InputDecoration(
                     labelText: 'Available',
                     isDense: true,
@@ -389,6 +392,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   onChanged: (val) {
                     _data[_key(d, cat)]!['available'] = int.tryParse(val) ?? 0;
                   },
+                  onFieldSubmitted: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
                 ),
               ),
               const SizedBox(width: 10),
@@ -397,6 +402,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   key: ValueKey('p|$_rev|${_key(d, cat)}'),
                   initialValue: v['price'].toString(),
                   keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.done,
+                  onTapOutside: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
                   decoration: const InputDecoration(
                     labelText: 'Price ₹',
                     isDense: true,
@@ -404,6 +412,8 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   onChanged: (val) {
                     _data[_key(d, cat)]!['price'] = val.trim().isEmpty ? '0' : val.trim();
                   },
+                  onFieldSubmitted: (_) =>
+                      FocusManager.instance.primaryFocus?.unfocus(),
                 ),
               ),
             ],

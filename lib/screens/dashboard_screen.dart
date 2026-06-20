@@ -20,6 +20,10 @@ import 'profile_screen.dart';
 import 'accounts_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'stay_view_screen.dart';
+import '../core/notification_service.dart';
+import 'no_show_screen.dart';
+import '../core/api_service.dart';
+import 'subuser_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -32,11 +36,13 @@ class _DashboardScreenState extends State<DashboardScreen>
   DateTime _selectedDate = DateTime.now();
   late final DateTime _firstDate;
   bool _checkingAvail = false;
+  Map<String, dynamic> _permissions = {};
+  bool _permissionsLoaded = false;
 
   String _hotelName = 'Loading...';
 
   static const int _stripDays = 90;
-  static const double _itemExtent = 66;
+  static const double _itemExtent = 56;
   final ScrollController _dateCtrl = ScrollController();
 
   bool _loading = false;
@@ -69,7 +75,34 @@ class _DashboardScreenState extends State<DashboardScreen>
     _firstDate = DateTime.now().subtract(const Duration(days: 30));
     _load();
     _loadHotelName();
+    _loadPermissions();
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
+
+    // Naya booking aaye to dashboard auto-refresh ho jaye
+    NotificationService.instance.newBookingTrigger.addListener(_onNewBooking);
+  }
+
+  Future<void> _loadPermissions() async {
+    try {
+      final res = await ApiService.instance.getData(AppConfig.myPermissions);
+      if (!mounted) return;
+      setState(() {
+        _permissions = Map<String, dynamic>.from(res.data['permissions'] ?? {});
+        _permissionsLoaded = true;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _permissionsLoaded = true);
+    }
+  }
+
+  bool _canAccess(String pageKey) {
+    if (!_permissionsLoaded) return true; // load hone tak sab dikhao (avoid flicker)
+    return _permissions[pageKey] != false;
+  }
+
+  void _onNewBooking() {
+    if (mounted) _load();
   }
 
   Future<void> _loadHotelName() async {
@@ -90,6 +123,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    NotificationService.instance.newBookingTrigger.removeListener(_onNewBooking);
     _dateCtrl.dispose();
     super.dispose();
   }
@@ -106,6 +140,8 @@ class _DashboardScreenState extends State<DashboardScreen>
           );
         }
       });
+      // ✅ Resume hone par badge count fresh karo (background notif ke baad)
+      NotificationService.instance.refreshUnreadCount();
     }
   }
 
@@ -343,11 +379,46 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const Spacer(),
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
-                    child: IconButton(
-                      onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const NotificationsScreen())),
-                      icon: const Icon(Icons.notifications_none_rounded,
-                          color: AppColors.textPrimary, size: 26),
+                    child: ValueListenableBuilder<int>(
+                      valueListenable: NotificationService.instance.unreadCount,
+                      builder: (context, count, _) {
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            IconButton(
+                              onPressed: () async {
+                                await NotificationService.instance.clearUnread();
+                                if (!mounted) return;
+                                Navigator.of(context).push(MaterialPageRoute(
+                                    builder: (_) => const NotificationsScreen()));
+                              },
+                              icon: const Icon(Icons.notifications_none_rounded,
+                                  color: AppColors.textPrimary, size: 26),
+                            ),
+                            if (count > 0)
+                              Positioned(
+                                right: 6,
+                                top: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDC2626),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    count > 99 ? '99+' : '$count',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -503,7 +574,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () => _selectDate(d),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
-          width: 54, height: 72,
+          width: 46,
+          constraints: const BoxConstraints(minHeight: 60, maxHeight: 66),
+          padding: const EdgeInsets.symmetric(vertical: 4),
           decoration: BoxDecoration(
             color: sel ? AppColors.accentSoft : AppColors.card,
             borderRadius: BorderRadius.circular(14),
@@ -511,17 +584,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                 color: sel ? AppColors.primary : AppColors.border,
                 width: sel ? 1.5 : 1),
           ),
-          child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(_weekdays[d.weekday - 1],
-                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-            const SizedBox(height: 3),
-            Text(d.day.toString().padLeft(2, '0'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary)),
-            const SizedBox(height: 2),
-            Text(_months[d.month - 1],
-                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-          ]),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(_weekdays[d.weekday - 1],
+                  style: const TextStyle(fontSize: 9, color: AppColors.textSecondary)),
+              const SizedBox(height: 3),
+              Text(d.day.toString().padLeft(2, '0'),
+                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text(_months[d.month - 1],
+                  style: const TextStyle(fontSize: 9, color: AppColors.textSecondary)),
+            ],
+          ),
         ),
       ),
     );
@@ -539,7 +616,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           borderRadius: BorderRadius.circular(18),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -560,26 +637,26 @@ class _DashboardScreenState extends State<DashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [color, color.withOpacity(0.75)]),
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                       boxShadow: [BoxShadow(
                           color: color.withOpacity(0.25),
-                          blurRadius: 6,
+                          blurRadius: 4,
                           offset: const Offset(0, 2))],
                     ),
-                    child: Icon(icon, size: 16, color: Colors.white)),
-                const SizedBox(height: 12),
+                    child: Icon(icon, size: 13, color: Colors.white)),
+                const SizedBox(height: 8),
                 Text(value, style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.w800,
+                    fontSize: 18, fontWeight: FontWeight.w800,
                     color: AppColors.textPrimary, letterSpacing: -0.5)),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(label, style: const TextStyle(
-                    fontSize: 11, color: AppColors.textSecondary,
+                    fontSize: 10, color: AppColors.textSecondary,
                     fontWeight: FontWeight.w500, letterSpacing: 0.2)),
               ],
             ),
@@ -691,7 +768,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const BookingsScreen()));
         }),
-        _navItem(Icons.person_rounded, 'Profile', false, _openProfile),
+        _navItem(Icons.widgets_rounded, 'More', false, _openProfile),
       ]),
     );
   }
@@ -704,9 +781,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (_) => DraggableScrollableSheet(
-        initialChildSize: 0.75,
-        minChildSize: 0.5,
-        maxChildSize: 0.9,
+        initialChildSize: 0.87,
+        minChildSize: 0.6,
+        maxChildSize: 0.95,
         expand: false,
         builder: (ctx, scrollCtrl) => Column(children: [
           // Drag handle
@@ -738,79 +815,117 @@ class _DashboardScreenState extends State<DashboardScreen>
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
                 // ── Inventory Section ──
-                _menuSection('Inventory'),
-                _menuGrid([
-                  _menuItem(Icons.tune, 'Inventory\n& Rates', const Color(0xFF6C5CE7), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const InventoryScreen()));
-                  }),
-                  _menuItem(Icons.layers_outlined, 'Bulk\nUpdate', const Color(0xFF4F8DF5), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const BulkUpdateScreen()));
-                  }),
-                ]),
-                const SizedBox(height: 16),
+                if (_canAccess('mobile_inventory') ||
+                    _canAccess('mobile_bulk_update') ||
+                    _canAccess('mobile_no_show')) ...[
+                  _menuSection('Inventory'),
+                  _menuGrid([
+                    if (_canAccess('mobile_inventory'))
+                      _menuItem(Icons.tune, 'Inventory\n& Rates', const Color(0xFF6C5CE7), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const InventoryScreen()));
+                      }),
+                    if (_canAccess('mobile_bulk_update'))
+                      _menuItem(Icons.layers_outlined, 'Bulk\nUpdate', const Color(0xFF4F8DF5), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const BulkUpdateScreen()));
+                      }),
+                    if (_canAccess('mobile_no_show'))
+                      _menuItem(Icons.event_busy_outlined, 'No\nShow', const Color(0xFFEF4444), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const NoShowScreen()));
+                      }),
+                  ]),
+                  const SizedBox(height: 16),
+                ],
 
+                if (_canAccess('mobile_stay_view')) ...[
+                  _menuSection('Room Management'),
+                  _menuGrid([
+                    _menuItem(Icons.calendar_view_week, 'Stay\nView', const Color(0xFF1A2540), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const StayViewScreen()));
+                    }),
+                  ]),
+                  const SizedBox(height: 16),
+                ],
 
-                _menuSection('Room Management'),
-                _menuGrid([
-                  _menuItem(Icons.calendar_view_week, 'Stay\nView', const Color(0xFF1A2540), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const StayViewScreen()));
-                  }),
-                ]),
-                const SizedBox(height: 16),
+                if (_canAccess('mobile_purchase_expense') ||
+                    _canAccess('mobile_accounts')) ...[
+                  _menuSection('Finance'),
+                  _menuGrid([
+                    if (_canAccess('mobile_purchase_expense'))
+                      _menuItem(Icons.shopping_bag_outlined, 'Purchase\n& Expense', const Color(0xFFF59E0B), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const PurchaseExpenseScreen()));
+                      }),
+                    if (_canAccess('mobile_accounts'))
+                      _menuItem(Icons.account_balance_outlined, 'Accounts\n& GST', const Color(0xFF10B981), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const AccountsScreen()));
+                      }),
+                  ]),
+                  const SizedBox(height: 16),
+                ],
 
-                // ── Finance Section ──
-                _menuSection('Finance'),
-                _menuGrid([
-                  _menuItem(Icons.shopping_bag_outlined, 'Purchase\n& Expense', const Color(0xFFF59E0B), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const PurchaseExpenseScreen()));
-                  }),
-                  _menuItem(Icons.account_balance_outlined, 'Accounts\n& GST', const Color(0xFF10B981), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const AccountsScreen()));
-                  }),
-                ]),
-                const SizedBox(height: 16),
-
-                // ── Reports Section ──
-                _menuSection('Reports'),
-                _menuGrid([
-                  _menuItem(Icons.bar_chart_outlined, 'Sales\nReport', const Color(0xFF8B5CF6), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => SalesReportScreen()));
-                  }),
-                  _menuItem(Icons.percent_outlined, 'OTA\nCommission', const Color(0xFFEC4899), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => OtaCommissionScreen()));
-                  }),
-                  _menuItem(Icons.assessment_outlined, 'Business\nReport', const Color(0xFF14B8A6), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => DetailedSalesReportScreen()));
-                  }),
-                ]),
-                const SizedBox(height: 16),
+                if (_canAccess('mobile_sales_report') ||
+                    _canAccess('mobile_ota_commission') ||
+                    _canAccess('mobile_business_report')) ...[
+                  _menuSection('Reports'),
+                  _menuGrid([
+                    if (_canAccess('mobile_sales_report'))
+                      _menuItem(Icons.bar_chart_outlined, 'Sales\nReport', const Color(0xFF8B5CF6), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => SalesReportScreen()));
+                      }),
+                    if (_canAccess('mobile_ota_commission'))
+                      _menuItem(Icons.percent_outlined, 'OTA\nCommission', const Color(0xFFEC4899), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => OtaCommissionScreen()));
+                      }),
+                    if (_canAccess('mobile_business_report'))
+                      _menuItem(Icons.assessment_outlined, 'Business\nReport', const Color(0xFF14B8A6), () {
+                        Navigator.pop(context);
+                        Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => DetailedSalesReportScreen()));
+                      }),
+                  ]),
+                  const SizedBox(height: 16),
+                ],
 
                 // ── Settings Section ──
-                _menuSection('Settings'),
-                _menuGrid([
-                  _menuItem(Icons.business_outlined, 'Hotel\nProfile', const Color(0xFF64748B), () {
-                    Navigator.pop(context);
-                    Navigator.push(context, MaterialPageRoute(
-                        builder: (_) => const ProfileScreen()));
-                  }),
-                ]),
-                const SizedBox(height: 24),
+                if (_canAccess('mobile_hotel_profile')) ...[
+                  _menuSection('Settings'),
+                  FutureBuilder<bool>(
+                    future: ApiService.instance.isSubuser(),
+                    builder: (context, snapshot) {
+                      final isSub = snapshot.data ?? true;
+                      return _menuGrid([
+                        _menuItem(Icons.business_outlined, 'Hotel\nProfile', const Color(0xFF64748B), () {
+                          Navigator.pop(context);
+                          Navigator.push(context, MaterialPageRoute(
+                              builder: (_) => const ProfileScreen()));
+                        }),
+                        if (!isSub)
+                          _menuItem(Icons.group_outlined, 'Manage\nStaff', const Color(0xFF7C3AED), () {
+                            Navigator.pop(context);
+                            Navigator.push(context, MaterialPageRoute(
+                                builder: (_) => const SubuserScreen()));
+                          }),
+                      ]);
+                    },
+                  ),
+                  const SizedBox(height: 24),
+                ] else
+                  const SizedBox(height: 8),
 
                 // ── Logout ──
                 GestureDetector(

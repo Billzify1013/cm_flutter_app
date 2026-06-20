@@ -227,6 +227,7 @@ class _BulkUpdateScreenState extends State<BulkUpdateScreen> {
   Widget build(BuildContext context) {
     final affected = _affectedDates;
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         title: const Text('Bulk update',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18)),
@@ -424,6 +425,11 @@ class _BulkUpdateScreenState extends State<BulkUpdateScreen> {
                       child: TextField(
                         controller: _catControllers[cat],
                         keyboardType: TextInputType.number,
+                        textInputAction: TextInputAction.done,
+                        onTapOutside: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
+                        onSubmitted: (_) =>
+                            FocusManager.instance.primaryFocus?.unfocus(),
                         decoration: InputDecoration(
                           hintText: _mode == 0 ? 'Price ₹' : 'Available',
                           isDense: true,

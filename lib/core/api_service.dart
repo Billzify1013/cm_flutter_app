@@ -66,15 +66,22 @@ class ApiService {
     required String access,
     required String refresh,
     required int userId,
+    bool isSubuser = false,
   }) async {
     await _storage.write(key: 'access', value: access);
     await _storage.write(key: 'refresh', value: refresh);
     await _storage.write(key: 'user_id', value: userId.toString());
+    await _storage.write(key: 'is_subuser', value: isSubuser.toString());
     // Aaj raat 12 baje (next midnight) ki expiry save karo
     final now = DateTime.now();
     final nextMidnight = DateTime(now.year, now.month, now.day + 1);
     await _storage.write(
         key: 'session_expiry', value: nextMidnight.toIso8601String());
+  }
+
+  Future<bool> isSubuser() async {
+    final val = await _storage.read(key: 'is_subuser');
+    return val == 'true';
   }
 
   Future<String?> getAccessToken() => _storage.read(key: 'access');
@@ -119,7 +126,7 @@ class ApiService {
   }
 
   // ---------------- Auth ----------------
-  Future<Response> login(String username, String password) async {  // ✅ Future<Response>
+  Future<Response> login(String username, String password) async {
     final res = await _dio.post(AppConfig.login, data: {
       'username': username,
       'password': password,
@@ -129,8 +136,9 @@ class ApiService {
       access: data['access'] as String,
       refresh: data['refresh'] as String,
       userId: data['user_id'] as int,
+      isSubuser: data['is_subuser'] == true,
     );
-    return res;  // ✅ Response return kar
+    return res;
   }
 
   Future<void> saveHotelName(String name) async {

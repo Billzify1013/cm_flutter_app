@@ -2,12 +2,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_service.dart';
 import '../config/app_config.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   debugPrint('BG notification: ${message.notification?.title}');
+  // Background me bhi counter badhao
+  final prefs = await SharedPreferences.getInstance();
+  final current = prefs.getInt('unread_booking_count') ?? 0;
+  await prefs.setInt('unread_booking_count', current + 1);
 }
 
 class NotificationService {
@@ -21,15 +26,44 @@ class NotificationService {
   static const _channelName = 'Billzify Bookings';
   static const _channelDesc = 'Booking alerts';
 
+  // Unread booking count - dashboard aur badge isko sunenge
+  final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
+
+  // Jab naya notification aaye to ye fire hoga (dashboard refresh ke liye)
+  final ValueNotifier<int> newBookingTrigger = ValueNotifier<int>(0);
+
   Future<void> init() async {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
     await _requestPermissions();
     await _setupLocalNotifications();
     await _fetchAndSaveToken();
+    await refreshUnreadCount();
     _messaging.onTokenRefresh.listen(_saveToken);
 
-    // Foreground messages — local notification show karenge
+    // Foreground messages — local notification show karenge + counter badhayenge
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
+  }
+
+  Future<void> refreshUnreadCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    unreadCount.value = prefs.getInt('unread_booking_count') ?? 0;
+  }
+
+  Future<void> _incrementUnread() async {
+    final prefs = await SharedPreferences.getInstance();
+    final current = prefs.getInt('unread_booking_count') ?? 0;
+    final updated = current + 1;
+    await prefs.setInt('unread_booking_count', updated);
+    unreadCount.value = updated;
+    // Dashboard ko batao naya booking aaya hai
+    newBookingTrigger.value = newBookingTrigger.value + 1;
+  }
+
+  /// Notification icon pe tap karne par call karo - counter reset
+  Future<void> clearUnread() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('unread_booking_count', 0);
+    unreadCount.value = 0;
   }
 
   Future<void> _requestPermissions() async {
@@ -69,6 +103,10 @@ class NotificationService {
 
   void _onForegroundMessage(RemoteMessage message) {
     final notif = message.notification;
+
+    // Counter badhao (foreground me bhi)
+    _incrementUnread();
+
     if (notif == null) return;
 
     _localNotif.show(

@@ -71,4 +71,11 @@ class AppConfig {
   static const String pmsAvailableRooms = '/api/pms/available-rooms/';
   static const String pmsRegistration = '/api/pms/registration/';
   static const String pmsRegistrationSave = '/api/pms/registration-save/';
+  static const String noShowList = '/api/noshow-list/';
+  static const String markNoShow = '/api/mark-noshow/';
+  static const String subuserCreate = '/api/subuser/create/';
+  static const String subuserList = '/api/subuser/list/';
+  static const String subuserPermissions = '/api/subuser/permissions/';
+  static const String subuserDelete = '/api/subuser/delete/';
+  static const String myPermissions = '/api/my-permissions/';
 }

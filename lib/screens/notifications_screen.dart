@@ -6,6 +6,7 @@ import '../core/error_util.dart';
 import '../config/app_config.dart';
 import '../widgets/channel_avatar.dart';
 import 'booking_detail_screen.dart';
+import '../core/notification_service.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -31,6 +32,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void initState() {
     super.initState();
     _load();
+    NotificationService.instance.clearUnread();
   }
 
   Future<void> _load() async {
