@@ -32,8 +32,9 @@ android {
         applicationId = "com.billzify.cm"
         minSdk = flutter.minSdkVersion
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.3"
+        versionCode = 5
+        versionName = "1.0.5"
+        multiDexEnabled = true
     }
 
     signingConfigs {
@@ -64,33 +65,11 @@ android {
             enableSplit = false
         }
     }
-
-    packaging {
-        resources {
-            excludes += listOf(
-                "lib/x86/libc++_shared.so",
-                "lib/x86_64/libc++_shared.so",
-                "lib/armeabi-v7a/libc++_shared.so",
-                "lib/arm64-v8a/libc++_shared.so"
-            )
-        }
-        jniLibs {
-            excludes += listOf(
-                "lib/x86/libc++_shared.so",
-                "lib/x86_64/libc++_shared.so",
-                "lib/armeabi-v7a/libc++_shared.so",
-                "lib/arm64-v8a/libc++_shared.so"
-            )
-        }
-    }
-
-    lint {
-        disable.add("MissingDimensionActivityClassName")
-    }
 }
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("androidx.multidex:multidex:2.0.1")
 }
 
 flutter {

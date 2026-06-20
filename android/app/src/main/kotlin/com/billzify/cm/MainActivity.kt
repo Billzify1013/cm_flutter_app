@@ -1,4 +1,4 @@
-package com.cmapps.cm_flutter_app
+package com.billzify.cm
 
 import io.flutter.embedding.android.FlutterActivity
 
