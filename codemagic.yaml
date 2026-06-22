@@ -6,6 +6,8 @@ workflows:
     integrations:
       app_store_connect: CodeMagic Integration
     environment:
+      vars:
+        BUNDLE_ID: "com.billzify.cm"
       flutter: stable
       xcode: latest
       cocoapods: default
@@ -19,8 +21,15 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           cd ios && pod install
+      - name: Fetch signing files
+        script: |
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
       - name: Set up code signing
         script: |
+          keychain initialize
+          keychain add-certificates
           xcode-project use-profiles
       - name: Build IPA for App Store
         script: |
