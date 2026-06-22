@@ -21,10 +21,16 @@ workflows:
       - name: Set up keychain
         script: |
           keychain initialize
+      - name: Generate certificate signing request
+        script: |
+          keychain generate-certificate-signing-request \
+            > $CM_BUILD_DIR/cert_request.csr
       - name: Fetch signing files
         script: |
           app-store-connect fetch-signing-files "$BUNDLE_ID" \
             --type IOS_APP_STORE \
+            --certificate-type IOS_DISTRIBUTION \
+            --csr-path=$CM_BUILD_DIR/cert_request.csr \
             --create
       - name: Add certificates to keychain
         script: |
