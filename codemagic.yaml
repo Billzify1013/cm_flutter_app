@@ -21,17 +21,13 @@ workflows:
       - name: Install CocoaPods dependencies
         script: |
           cd ios && pod install
-      - name: Fix bundle identifier in Xcode project
-        script: |
-          cd ios
-          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = .*/PRODUCT_BUNDLE_IDENTIFIER = com.billzify.cm;/g' Runner.xcodeproj/project.pbxproj
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.billzify.cm" Runner/Info.plist
-      - name: Verify bundle identifier
-        script: |
-          grep "PRODUCT_BUNDLE_IDENTIFIER" ios/Runner.xcodeproj/project.pbxproj
       - name: Set up code signing settings on Xcode project
         script: |
           xcode-project use-profiles
+      - name: Fix bundle identifier after signing
+        script: |
+          cd ios
+          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = com\.billzify\.cm\.[^;]*/PRODUCT_BUNDLE_IDENTIFIER = com.billzify.cm/g' Runner.xcodeproj/project.pbxproj
       - name: Build IPA for App Store
         script: |
           flutter build ipa --release \
