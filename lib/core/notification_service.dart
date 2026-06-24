@@ -9,7 +9,6 @@ import '../config/app_config.dart';
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   debugPrint('BG notification: ${message.notification?.title}');
-  // Background me bhi counter badhao
   final prefs = await SharedPreferences.getInstance();
   final current = prefs.getInt('unread_booking_count') ?? 0;
   await prefs.setInt('unread_booking_count', current + 1);
@@ -26,11 +25,11 @@ class NotificationService {
   static const _channelName = 'Billzify Bookings';
   static const _channelDesc = 'Booking alerts';
 
-  // Unread booking count - dashboard aur badge isko sunenge
   final ValueNotifier<int> unreadCount = ValueNotifier<int>(0);
-
-  // Jab naya notification aaye to ye fire hoga (dashboard refresh ke liye)
   final ValueNotifier<int> newBookingTrigger = ValueNotifier<int>(0);
+
+  // DEBUG: last status/error yahan store hoga, dashboard pe dikhane ke liye
+  final ValueNotifier<String> debugStatus = ValueNotifier<String>('Not started');
 
   Future<void> init() async {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
@@ -39,8 +38,6 @@ class NotificationService {
     await _fetchAndSaveToken();
     await refreshUnreadCount();
     _messaging.onTokenRefresh.listen(_saveToken);
-
-    // Foreground messages — local notification show karenge + counter badhayenge
     FirebaseMessaging.onMessage.listen(_onForegroundMessage);
   }
 
@@ -55,11 +52,9 @@ class NotificationService {
     final updated = current + 1;
     await prefs.setInt('unread_booking_count', updated);
     unreadCount.value = updated;
-    // Dashboard ko batao naya booking aaya hai
     newBookingTrigger.value = newBookingTrigger.value + 1;
   }
 
-  /// Notification icon pe tap karne par call karo - counter reset
   Future<void> clearUnread() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt('unread_booking_count', 0);
@@ -67,12 +62,17 @@ class NotificationService {
   }
 
   Future<void> _requestPermissions() async {
-    await _messaging.requestPermission(
-      alert: true, badge: true, sound: true,
-    );
-    await _messaging.setForegroundNotificationPresentationOptions(
-      alert: true, badge: true, sound: true,
-    );
+    try {
+      final settings = await _messaging.requestPermission(
+        alert: true, badge: true, sound: true,
+      );
+      debugStatus.value = 'Permission: ${settings.authorizationStatus}';
+      await _messaging.setForegroundNotificationPresentationOptions(
+        alert: true, badge: true, sound: true,
+      );
+    } catch (e) {
+      debugStatus.value = 'Permission error: $e';
+    }
   }
 
   Future<void> _setupLocalNotifications() async {
@@ -103,12 +103,8 @@ class NotificationService {
 
   void _onForegroundMessage(RemoteMessage message) {
     final notif = message.notification;
-
-    // Counter badhao (foreground me bhi)
     _incrementUnread();
-
     if (notif == null) return;
-
     _localNotif.show(
       notif.hashCode,
       notif.title,
@@ -137,27 +133,32 @@ class NotificationService {
 
   Future<void> _fetchAndSaveToken() async {
     try {
-      // iOS: APNs token milne ka wait karo, warna getToken() fail/null hota hai
       if (Platform.isIOS) {
+        debugStatus.value = 'iOS: waiting for APNs token...';
         String? apnsToken = await _messaging.getAPNSToken();
         int attempts = 0;
-        while (apnsToken == null && attempts < 10) {
+        while (apnsToken == null && attempts < 15) {
           await Future.delayed(const Duration(seconds: 1));
           apnsToken = await _messaging.getAPNSToken();
           attempts++;
         }
-        debugPrint('APNs token after wait: $apnsToken');
         if (apnsToken == null) {
-          debugPrint('APNs token still null after $attempts attempts, skipping FCM token fetch');
+          debugStatus.value = 'APNs token NULL after $attempts attempts';
           return;
         }
+        debugStatus.value = 'APNs token OK: ${apnsToken.substring(0, 10)}...';
       }
 
       final token = await _messaging.getToken();
-      debugPrint('FCM token: $token');
-      if (token != null) await _saveToken(token);
-    } catch (e) {
-      debugPrint('FCM token error: $e');
+      if (token == null) {
+        debugStatus.value = 'FCM getToken() returned NULL';
+        return;
+      }
+      debugStatus.value = 'FCM token OK: ${token.substring(0, 15)}...';
+      await _saveToken(token);
+    } catch (e, st) {
+      debugStatus.value = 'EXCEPTION: $e';
+      debugPrint('FCM token error: $e\n$st');
     }
   }
 
@@ -168,14 +169,18 @@ class NotificationService {
   Future<void> _saveToken(String token) async {
     try {
       final uid = await ApiService.instance.getUserId();
-      if (uid == null) return;
+      if (uid == null) {
+        debugStatus.value = 'No user_id found, skipping save';
+        return;
+      }
       await ApiService.instance.postData(AppConfig.saveFcmToken, {
         'user_id':  uid,
         'token':    token,
         'platform': Platform.isIOS ? 'ios' : 'android',
       });
-      debugPrint('FCM token saved');
+      debugStatus.value = 'Token saved to backend successfully';
     } catch (e) {
+      debugStatus.value = 'Save to backend FAILED: $e';
       debugPrint('FCM token save error: $e');
     }
   }
