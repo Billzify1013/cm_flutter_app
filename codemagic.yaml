@@ -32,6 +32,12 @@ workflows:
         script: |
           flutter build ipa --release \
             --export-options-plist=ios/export_options.plist
+      - name: Upload dSYM to Crashlytics
+        script: |
+          cd ios
+          find /Users/builder/clone/build/ios/archive/Runner.xcarchive/dSYMs -name "*.dSYM" | while read dsym; do
+            ./Pods/FirebaseCrashlytics/upload-symbols -gsp GoogleService-Info.plist -p ios "$dsym" || true
+          done
     artifacts:
       - build/ios/ipa/*.ipa
       - build/ios/archive/Runner.xcarchive
