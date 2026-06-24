@@ -137,7 +137,24 @@ class NotificationService {
 
   Future<void> _fetchAndSaveToken() async {
     try {
+      // iOS: APNs token milne ka wait karo, warna getToken() fail/null hota hai
+      if (Platform.isIOS) {
+        String? apnsToken = await _messaging.getAPNSToken();
+        int attempts = 0;
+        while (apnsToken == null && attempts < 10) {
+          await Future.delayed(const Duration(seconds: 1));
+          apnsToken = await _messaging.getAPNSToken();
+          attempts++;
+        }
+        debugPrint('APNs token after wait: $apnsToken');
+        if (apnsToken == null) {
+          debugPrint('APNs token still null after $attempts attempts, skipping FCM token fetch');
+          return;
+        }
+      }
+
       final token = await _messaging.getToken();
+      debugPrint('FCM token: $token');
       if (token != null) await _saveToken(token);
     } catch (e) {
       debugPrint('FCM token error: $e');
