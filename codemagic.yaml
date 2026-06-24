@@ -24,10 +24,6 @@ workflows:
       - name: Set up code signing settings on Xcode project
         script: |
           xcode-project use-profiles
-      - name: Fix bundle identifier after signing
-        script: |
-          cd ios
-          sed -i '' 's/PRODUCT_BUNDLE_IDENTIFIER = com\.billzify\.cm\.[^;]*/PRODUCT_BUNDLE_IDENTIFIER = com.billzify.cm/g' Runner.xcodeproj/project.pbxproj
       - name: Build IPA for App Store
         script: |
           flutter build ipa --release \
