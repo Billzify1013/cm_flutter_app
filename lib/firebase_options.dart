@@ -60,11 +60,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBl-zuWwMKU4zq2FPaED5G39hKHt9M3KUY',
-    appId: '1:743937583356:ios:ac3fa62b34ab4be4178f79',
+    appId: '1:743937583356:ios:bad785456300f042178f79',
     messagingSenderId: '743937583356',
     projectId: 'billzify-app',
     storageBucket: 'billzify-app.firebasestorage.app',
-    iosBundleId: 'com.cmapps.cmFlutterApp',
+    iosBundleId: 'com.billzify.cm',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
