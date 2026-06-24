@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>com.billzify.cm.62K9ZL33FM</string>
+	<string>com.billzify.cm</string>
 	<key>PROJECT_ID</key>
 	<string>billzify-app</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:743937583356:ios:9c2ce24f40194969178f79</string>
+	<string>1:743937583356:ios:bad785456300f042178f79</string>
 </dict>
 </plist>
