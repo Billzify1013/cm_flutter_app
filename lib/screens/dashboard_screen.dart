@@ -328,21 +328,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         bottom: false,
         child: Column(
           children: [
-            // 🔍 DEBUG - FCM status dikhane ke liye, baad mein hata denge
-            ValueListenableBuilder<String>(
-              valueListenable: NotificationService.instance.debugStatus,
-              builder: (context, status, _) {
-                return Container(
-                  width: double.infinity,
-                  color: Colors.yellow,
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    'FCM: $status',
-                    style: const TextStyle(fontSize: 11, color: Colors.black),
-                  ),
-                );
-              },
-            ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 3, 16, 6),
               child: Row(
