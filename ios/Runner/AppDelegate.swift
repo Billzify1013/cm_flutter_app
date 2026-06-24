@@ -12,4 +12,12 @@ import Firebase
     GeneratedPluginRegistrant.register(with: self)
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
+
+  override func application(_ application: UIApplication, shouldSaveApplicationState coder: NSCoder) -> Bool {
+    return false
+  }
+
+  override func application(_ application: UIApplication, shouldRestoreApplicationState coder: NSCoder) -> Bool {
+    return false
+  }
 }
