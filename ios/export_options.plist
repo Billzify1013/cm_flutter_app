@@ -7,7 +7,12 @@
     <key>teamID</key>
     <string>T6929Y9ZY6</string>
     <key>signingStyle</key>
-    <string>automatic</string>
+    <string>manual</string>
+    <key>provisioningProfiles</key>
+    <dict>
+        <key>com.billzify.cm</key>
+        <string>9618fe04-0f8a-479b-81f9-c2381a808c8f</string>
+    </dict>
     <key>signingCertificate</key>
     <string>Apple Distribution</string>
 </dict>
