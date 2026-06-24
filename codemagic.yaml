@@ -34,6 +34,7 @@ workflows:
             --export-options-plist=ios/export_options.plist
     artifacts:
       - build/ios/ipa/*.ipa
+      - build/ios/archive/Runner.xcarchive
       - /tmp/xcodebuild_logs/*.log
       - flutter_drive.log
     publishing:
