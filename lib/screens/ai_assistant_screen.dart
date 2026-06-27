@@ -206,13 +206,32 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         ),
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.border),
+          preferredSize: const Size.fromHeight(28),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+            decoration: const BoxDecoration(
+              border: Border(top: BorderSide(color: AppColors.border)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 11, color: AppColors.textSecondary.withOpacity(0.7)),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(
+                    'AI can make mistakes — please double-check.',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 10, color: AppColors.textSecondary.withOpacity(0.8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        onTap: () => FocusScope.of(context).unfocus(),
         child: SafeArea(
           child: Column(
             children: [
@@ -227,32 +246,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                   },
                 ),
               ),
-              _disclaimerBanner(),
               _suggestionRow(),
               _inputBar(),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _disclaimerBanner() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      color: AppColors.background,
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, size: 12, color: AppColors.textSecondary.withOpacity(0.7)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'AI can make mistakes — please double-check important responses.',
-              style: TextStyle(fontSize: 10.5, color: AppColors.textSecondary.withOpacity(0.8)),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -361,7 +359,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           ),
           const SizedBox(width: 6),
           InkWell(
-            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            onTap: () => FocusScope.of(context).unfocus(),
             customBorder: const CircleBorder(),
             child: Container(
               width: 36,
@@ -760,6 +758,41 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               _statPill('${d['trend_pct']}%', '7-day trend'),
             ],
           ),
+          if ((d['categories'] as List?)?.isNotEmpty == true) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1, color: AppColors.border),
+            const SizedBox(height: 10),
+            Text(
+              d['date'] != null ? 'Suggested rates for ${d['date']}' : 'Suggested rates',
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 6),
+            ...List<dynamic>.from(d['categories']).map((c) {
+              final cat = Map<String, dynamic>.from(c as Map);
+              final name = (cat['room_category_name'] ?? '').toString();
+              final current = cat['current_price']?.toString() ?? '0';
+              final suggested = cat['suggested_price']?.toString() ?? '0';
+              final catDir = (cat['direction'] ?? 'hold').toString();
+              final catColor = catDir == 'increase'
+                  ? AppColors.success
+                  : catDir == 'decrease'
+                  ? const Color(0xFFEF4444)
+                  : AppColors.textSecondary;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                    Text('₹$current', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                    const SizedBox(width: 6),
+                    Icon(Icons.arrow_forward, size: 11, color: catColor),
+                    const SizedBox(width: 6),
+                    Text('₹$suggested', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: catColor)),
+                  ],
+                ),
+              );
+            }),
+          ],
         ],
       ),
     );
