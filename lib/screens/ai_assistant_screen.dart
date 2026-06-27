@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/api_service.dart';
 import '../core/theme/app_colors.dart';
@@ -54,6 +55,14 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   int? _quotaUsed;
   int? _quotaLimit;
 
+  // ── Typeahead (live suggestions while typing) ──
+  List<String> _typeaheadSuggestions = [];
+  bool _typeaheadLoading = false;
+  Timer? _typeaheadDebounce;
+
+  // ── Starter questions (shown on the initial "how can I help" screen) ──
+  List<String> _starterQuestions = [];
+
   @override
   void initState() {
     super.initState();
@@ -64,13 +73,79 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     ));
     _loadFrequentQuestions();
     _loadUsageStatus();
+    _loadStarterQuestions();
+    _inputCtrl.addListener(_onInputChanged);
   }
 
   @override
   void dispose() {
+    _typeaheadDebounce?.cancel();
+    _inputCtrl.removeListener(_onInputChanged);
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
+  }
+
+  void _onInputChanged() {
+    final text = _inputCtrl.text.trim();
+    _typeaheadDebounce?.cancel();
+
+    if (text.length < 2) {
+      if (_typeaheadSuggestions.isNotEmpty) {
+        setState(() => _typeaheadSuggestions = []);
+      }
+      return;
+    }
+
+    // Debounce — wait 350ms after the user stops typing before
+    // hitting the server, so we don't fire a request per keystroke.
+    _typeaheadDebounce = Timer(const Duration(milliseconds: 350), () {
+      _fetchTypeahead(text);
+    });
+  }
+
+  Future<void> _fetchTypeahead(String text) async {
+    setState(() => _typeaheadLoading = true);
+    try {
+      final uid = await ApiService.instance.getUserId();
+      final res = await ApiService.instance.getData(
+        AppConfig.aiTypeahead,
+        query: {'user_id': uid, 'q': text, 'limit': '8'},
+      );
+      final list = (res.data['suggestions'] as List?) ?? [];
+      if (!mounted) return;
+      // Only apply if the input hasn't changed since we started the
+      // request (avoids stale results flashing in after the user
+      // has already typed something else).
+      if (_inputCtrl.text.trim() == text) {
+        setState(() => _typeaheadSuggestions = list.map((e) => e.toString()).toList());
+      }
+    } catch (_) {
+      // Silent — typeahead is a nice-to-have, never block typing on it.
+    } finally {
+      if (mounted) setState(() => _typeaheadLoading = false);
+    }
+  }
+
+  void _selectTypeaheadSuggestion(String suggestion) {
+    setState(() => _typeaheadSuggestions = []);
+    _inputCtrl.text = suggestion;
+    _inputCtrl.selection = TextSelection.fromPosition(
+      TextPosition(offset: suggestion.length),
+    );
+  }
+
+  Future<void> _loadStarterQuestions() async {
+    try {
+      final uid = await ApiService.instance.getUserId();
+      final res = await ApiService.instance.getData(
+        AppConfig.aiStarterQuestions,
+        query: {'user_id': uid, 'limit': '10'},
+      );
+      final list = (res.data['suggestions'] as List?) ?? [];
+      if (!mounted) return;
+      setState(() => _starterQuestions = list.map((e) => e.toString()).toList());
+    } catch (_) {}
   }
 
   Future<void> _loadFrequentQuestions() async {
@@ -120,6 +195,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     setState(() {
       _messages.add(_ChatMessage(text: text, isUser: true));
       _sending = true;
+      _typeaheadSuggestions = [];
       _inputCtrl.clear();
     });
     _scrollToBottom();
@@ -229,28 +305,104 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           ),
         ),
       ),
-      body: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: SafeArea(
-          child: Column(
-            children: [
-              Expanded(
+      body: SafeArea(
+        child: Column(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusScope.of(context).unfocus(),
                 child: ListView.builder(
                   controller: _scrollCtrl,
                   padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-                  itemCount: _messages.length + (_sending ? 1 : 0),
+                  itemCount: _messages.length + (_sending ? 1 : 0) + (_messages.length == 1 ? 1 : 0),
                   itemBuilder: (ctx, i) {
-                    if (i == _messages.length && _sending) return _typingBubble();
-                    return _messageBubble(_messages[i]);
+                    // Starter-question grid sits right after the welcome
+                    // message, only while the conversation hasn't started.
+                    if (_messages.length == 1 && i == 1) return _starterQuestionsGrid();
+                    final adjustedIndex = (_messages.length == 1 && i > 1) ? i - 1 : i;
+                    if (adjustedIndex == _messages.length && _sending) return _typingBubble();
+                    return _messageBubble(_messages[adjustedIndex]);
                   },
                 ),
               ),
-              _suggestionRow(),
-              _inputBar(),
-            ],
-          ),
+            ),
+            if (_typeaheadSuggestions.isNotEmpty) _typeaheadDropdown(),
+            _suggestionRow(),
+            _inputBar(),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _starterQuestionsGrid() {
+    if (_starterQuestions.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14, top: 4, right: 40),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _starterQuestions.map((q) {
+          return InkWell(
+            onTap: () => _send(q),
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Text(
+                q,
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: AppColors.primary),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _typeaheadDropdown() {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 220),
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 10, offset: Offset(0, -2))],
+      ),
+      child: ListView.separated(
+        shrinkWrap: true,
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        itemCount: _typeaheadSuggestions.length,
+        separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+        itemBuilder: (ctx, i) {
+          final suggestion = _typeaheadSuggestions[i];
+          return InkWell(
+            onTap: () => _selectTypeaheadSuggestion(suggestion),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.history_rounded, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      suggestion,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -87,4 +87,6 @@ class AppConfig {
   static const String aiConfirmInvoiceGenerate = '/api/ai-assistant/confirm-invoice-generate/';
   static const String aiWizardCheckDates = '/api/ai-assistant/wizard-check-dates/';
   static const String aiConfirmCreateBooking = '/api/ai-assistant/confirm-create-booking/';
+  static const String aiTypeahead = '/api/ai-assistant/typeahead/';
+  static const String aiStarterQuestions = '/api/ai-assistant/starter-questions/';
 }
