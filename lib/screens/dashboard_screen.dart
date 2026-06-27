@@ -24,6 +24,7 @@ import '../core/notification_service.dart';
 import 'no_show_screen.dart';
 import '../core/api_service.dart';
 import 'subuser_screen.dart';
+import 'ai_assistant_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -814,6 +815,19 @@ class _DashboardScreenState extends State<DashboardScreen>
               controller: scrollCtrl,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
+                // ── AI Assistant Section ──
+                if (_canAccess('mobile_dashboard')) ...[
+                  _menuSection('Assistant'),
+                  _menuGrid([
+                    _menuItem(Icons.smart_toy_outlined, 'AI\nAssistant', const Color(0xFF6C5CE7), () {
+                      Navigator.pop(context);
+                      Navigator.push(context, MaterialPageRoute(
+                          builder: (_) => const AiAssistantScreen()));
+                    }),
+                  ]),
+                  const SizedBox(height: 16),
+                ],
+
                 // ── Inventory Section ──
                 if (_canAccess('mobile_inventory') ||
                     _canAccess('mobile_bulk_update') ||
