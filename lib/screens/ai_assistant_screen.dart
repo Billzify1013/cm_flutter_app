@@ -210,24 +210,28 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           child: Container(height: 1, color: AppColors.border),
         ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollCtrl,
-                padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-                itemCount: _messages.length + (_sending ? 1 : 0),
-                itemBuilder: (ctx, i) {
-                  if (i == _messages.length && _sending) return _typingBubble();
-                  return _messageBubble(_messages[i]);
-                },
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  controller: _scrollCtrl,
+                  padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
+                  itemCount: _messages.length + (_sending ? 1 : 0),
+                  itemBuilder: (ctx, i) {
+                    if (i == _messages.length && _sending) return _typingBubble();
+                    return _messageBubble(_messages[i]);
+                  },
+                ),
               ),
-            ),
-            _disclaimerBanner(),
-            _suggestionRow(),
-            _inputBar(),
-          ],
+              _disclaimerBanner(),
+              _suggestionRow(),
+              _inputBar(),
+            ],
+          ),
         ),
       ),
     );
@@ -343,6 +347,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 minLines: 1,
                 maxLines: 4,
                 textCapitalization: TextCapitalization.sentences,
+                textInputAction: TextInputAction.send,
                 style: const TextStyle(fontSize: 14, color: AppColors.textPrimary),
                 decoration: const InputDecoration(
                   hintText: 'Type your message…',
@@ -354,7 +359,18 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            customBorder: const CircleBorder(),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(color: AppColors.accentSoft, shape: BoxShape.circle),
+              child: const Icon(Icons.keyboard_hide_outlined, color: AppColors.textSecondary, size: 18),
+            ),
+          ),
+          const SizedBox(width: 6),
           InkWell(
             onTap: _sending ? null : () => _send(),
             customBorder: const CircleBorder(),
