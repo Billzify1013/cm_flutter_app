@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/api_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/error_util.dart';
@@ -17,6 +19,9 @@ class _ChatMessage {
   final dynamic data;
   final DateTime time;
   bool actionDone;
+  final bool pdfAvailable;
+  final String? pdfType;
+  final String? pdfDate;
 
   _ChatMessage({
     required this.text,
@@ -24,6 +29,9 @@ class _ChatMessage {
     this.resultType,
     this.data,
     this.actionDone = false,
+    this.pdfAvailable = false,
+    this.pdfType,
+    this.pdfDate,
     DateTime? time,
   }) : time = time ?? DateTime.now();
 }
@@ -56,8 +64,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   int? _quotaLimit;
 
   // ── Typeahead (live suggestions while typing) ──
-  List<String> _typeaheadSuggestions = [];
-  bool _typeaheadLoading = false;
+  // Using a ValueNotifier (instead of plain state + setState) so that
+  // updating suggestions while the user types ONLY rebuilds the small
+  // dropdown widget below — not the entire screen (message list,
+  // input bar, etc). Rebuilding the whole tree on every keystroke is
+  // what was causing the typing/keyboard to feel like it was hanging.
+  final ValueNotifier<List<String>> _typeaheadNotifier = ValueNotifier([]);
   Timer? _typeaheadDebounce;
 
   // ── Starter questions (shown on the initial "how can I help" screen) ──
@@ -80,6 +92,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   @override
   void dispose() {
     _typeaheadDebounce?.cancel();
+    _typeaheadNotifier.dispose();
     _inputCtrl.removeListener(_onInputChanged);
     _inputCtrl.dispose();
     _scrollCtrl.dispose();
@@ -91,8 +104,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     _typeaheadDebounce?.cancel();
 
     if (text.length < 2) {
-      if (_typeaheadSuggestions.isNotEmpty) {
-        setState(() => _typeaheadSuggestions = []);
+      if (_typeaheadNotifier.value.isNotEmpty) {
+        _typeaheadNotifier.value = [];
       }
       return;
     }
@@ -105,7 +118,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   }
 
   Future<void> _fetchTypeahead(String text) async {
-    setState(() => _typeaheadLoading = true);
     try {
       final uid = await ApiService.instance.getUserId();
       final res = await ApiService.instance.getData(
@@ -118,21 +130,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       // request (avoids stale results flashing in after the user
       // has already typed something else).
       if (_inputCtrl.text.trim() == text) {
-        setState(() => _typeaheadSuggestions = list.map((e) => e.toString()).toList());
+        _typeaheadNotifier.value = list.map((e) => e.toString()).toList();
       }
     } catch (_) {
       // Silent — typeahead is a nice-to-have, never block typing on it.
-    } finally {
-      if (mounted) setState(() => _typeaheadLoading = false);
     }
   }
 
   void _selectTypeaheadSuggestion(String suggestion) {
-    setState(() => _typeaheadSuggestions = []);
-    _inputCtrl.text = suggestion;
-    _inputCtrl.selection = TextSelection.fromPosition(
-      TextPosition(offset: suggestion.length),
-    );
+    _typeaheadNotifier.value = [];
+    FocusScope.of(context).unfocus();
+    _send(suggestion);
   }
 
   Future<void> _loadStarterQuestions() async {
@@ -192,10 +200,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final text = (presetText ?? _inputCtrl.text).trim();
     if (text.isEmpty || _sending) return;
 
+    _typeaheadNotifier.value = [];
     setState(() {
       _messages.add(_ChatMessage(text: text, isUser: true));
       _sending = true;
-      _typeaheadSuggestions = [];
       _inputCtrl.clear();
     });
     _scrollToBottom();
@@ -211,6 +219,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       final resultType = res.data['result_type']?.toString();
       final data = res.data['data'];
       final source = res.data['source']?.toString();
+      final pdfAvailable = res.data['pdf_available'] == true;
+      final pdfType = res.data['pdf_type']?.toString();
+      final pdfDate = res.data['pdf_date']?.toString();
 
       if (!mounted) return;
       setState(() {
@@ -219,6 +230,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           isUser: false,
           resultType: resultType,
           data: data,
+          pdfAvailable: pdfAvailable,
+          pdfType: pdfType,
+          pdfDate: pdfDate,
         ));
         _sending = false;
       });
@@ -327,7 +341,13 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                 ),
               ),
             ),
-            if (_typeaheadSuggestions.isNotEmpty) _typeaheadDropdown(),
+            ValueListenableBuilder<List<String>>(
+              valueListenable: _typeaheadNotifier,
+              builder: (context, suggestions, _) {
+                if (suggestions.isEmpty) return const SizedBox.shrink();
+                return _typeaheadDropdown(suggestions);
+              },
+            ),
             _suggestionRow(),
             _inputBar(),
           ],
@@ -365,7 +385,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     );
   }
 
-  Widget _typeaheadDropdown() {
+  Widget _typeaheadDropdown(List<String> suggestions) {
     return Container(
       constraints: const BoxConstraints(maxHeight: 220),
       margin: const EdgeInsets.fromLTRB(14, 0, 14, 4),
@@ -378,10 +398,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       child: ListView.separated(
         shrinkWrap: true,
         padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: _typeaheadSuggestions.length,
+        itemCount: suggestions.length,
         separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
         itemBuilder: (ctx, i) {
-          final suggestion = _typeaheadSuggestions[i];
+          final suggestion = suggestions[i];
           return InkWell(
             onTap: () => _selectTypeaheadSuggestion(suggestion),
             child: Padding(
@@ -594,11 +614,16 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         ),
         if (!isUser && msg.data != null && _hasContent(msg.data))
           Padding(
-            padding: const EdgeInsets.only(bottom: 14, right: 40),
+            padding: const EdgeInsets.only(bottom: 8, right: 40),
             child: _resultCard(msg),
           )
         else
           const SizedBox(height: 6),
+        if (!isUser && msg.pdfAvailable)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14, right: 40),
+            child: _PdfDownloadButton(pdfType: msg.pdfType!, pdfDate: msg.pdfDate ?? ''),
+          ),
       ],
     );
   }
@@ -2168,6 +2193,92 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
             decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true),
           ),
         ),
+      ],
+    );
+  }
+}
+
+// ============================================================
+// PDF DOWNLOAD BUTTON
+// Fetches the PDF as bytes via the authenticated ApiService client,
+// saves it to the device's temp directory, then opens it with the
+// device's default PDF viewer via url_launcher (file:// URL) — no
+// extra packages needed beyond what's already in the project
+// (dart:io is built into the Flutter SDK, url_launcher is already
+// used elsewhere in this app for tel: links).
+// ============================================================
+class _PdfDownloadButton extends StatefulWidget {
+  final String pdfType;
+  final String pdfDate;
+  const _PdfDownloadButton({required this.pdfType, required this.pdfDate});
+
+  @override
+  State<_PdfDownloadButton> createState() => _PdfDownloadButtonState();
+}
+
+class _PdfDownloadButtonState extends State<_PdfDownloadButton> {
+  bool _downloading = false;
+  String? _error;
+
+  Future<void> _download() async {
+    setState(() { _downloading = true; _error = null; });
+    try {
+      final uid = await ApiService.instance.getUserId();
+      final bytes = await ApiService.instance.getBytes(
+        AppConfig.aiExportPdf,
+        query: {'user_id': uid, 'type': widget.pdfType, 'date': widget.pdfDate},
+      );
+
+      final tempDir = Directory.systemTemp;
+      final fileName = '${widget.pdfType}_${widget.pdfDate.replaceAll(RegExp(r'[^0-9A-Za-z_-]'), '_')}.pdf';
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsBytes(bytes);
+
+      if (!mounted) return;
+      await launchUrl(Uri.file(file.path), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = friendlyError(e));
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: _downloading ? null : _download,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppColors.accentSoft,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _downloading
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                    : const Icon(Icons.picture_as_pdf_outlined, size: 16, color: AppColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  _downloading ? 'Preparing PDF…' : 'Download as PDF',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.primary),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_error != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(_error!, style: const TextStyle(fontSize: 10.5, color: Color(0xFFDC2626))),
+          ),
       ],
     );
   }

@@ -89,4 +89,5 @@ class AppConfig {
   static const String aiConfirmCreateBooking = '/api/ai-assistant/confirm-create-booking/';
   static const String aiTypeahead = '/api/ai-assistant/typeahead/';
   static const String aiStarterQuestions = '/api/ai-assistant/starter-questions/';
+  static const String aiExportPdf = '/api/ai-assistant/export-pdf/';
 }

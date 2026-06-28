@@ -53,6 +53,15 @@ class ApiService {
     ));
   }
 
+  Future<List<int>> getBytes(String path, {Map<String, dynamic>? query}) async {
+    final res = await _dio.get(
+      path,
+      queryParameters: query,
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return res.data as List<int>;
+  }
+
   static final ApiService instance = ApiService._internal();
   late final Dio _dio;
   late final Dio _rawDio;
