@@ -7,14 +7,6 @@ import '../core/error_util.dart';
 import '../config/app_config.dart';
 import 'booking_detail_screen.dart';
 
-// ============================================================
-// AI ASSISTANT SCREEN — BUTTON-FIRST
-// ============================================================
-// No free-text AI routing. Search box only filters the button
-// grid locally (no API call). Tapping a button opens a small form
-// (if it needs inputs) then calls api_ai_run_action directly.
-// ============================================================
-
 class _ActionDef {
   final String id;
   final String labelEn;
@@ -89,7 +81,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       final uid = await ApiService.instance.getUserId();
       final body = {'user_id': uid, 'action': action.id, ...params};
       final res = await ApiService.instance.postData(AppConfig.aiRunAction, body);
-
       if (action.id == 'booking_range_query') {
         final total = res.data['total_count'];
         final agg = res.data['aggregate_value'];
@@ -174,23 +165,27 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: AppColors.card,
-        elevation: 0,
-        title: const Text('AI Assistant', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _searchBar(),
-            _actionGrid(),
-            const Divider(height: 1, color: AppColors.border),
-            _askAnythingBar(),
-            Expanded(child: _resultsList()),
-          ],
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        resizeToAvoidBottomInset: true,
+        appBar: AppBar(
+          backgroundColor: AppColors.card,
+          elevation: 0,
+          title: const Text('AI Assistant', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        ),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _searchBar(),
+              _actionGrid(),
+              const Divider(height: 1, color: AppColors.border),
+              Expanded(child: _resultsList()),
+              _askAnythingBar(),
+            ],
+          ),
         ),
       ),
     );
@@ -233,44 +228,39 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     );
   }
 
-  // "Ask anything" — pure advice/research, never touches booking data.
-  // Calls api_ai_ask_anything, the only AI-backed endpoint left.
   Widget _askAnythingBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.accentSoft,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        child: Row(
-          children: [
-            const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _askCtrl,
-                style: const TextStyle(fontSize: 13),
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _askAnything(),
-                decoration: const InputDecoration(
-                  hintText: 'Ask anything — e.g. how to get more Google reviews',
-                  hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-                  border: InputBorder.none,
-                  isCollapsed: true,
-                ),
+    return Container(
+      padding: EdgeInsets.fromLTRB(14, 8, 14, MediaQuery.of(context).padding.bottom + 8),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        border: const Border(top: BorderSide(color: AppColors.border)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _askCtrl,
+              style: const TextStyle(fontSize: 13),
+              textInputAction: TextInputAction.send,
+              onSubmitted: (_) => _askAnything(),
+              decoration: const InputDecoration(
+                hintText: 'Ask anything…',
+                hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+                border: InputBorder.none,
+                isCollapsed: true,
               ),
             ),
-            InkWell(
-              onTap: _asking ? null : _askAnything,
-              child: _asking
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
-                  : const Icon(Icons.send, size: 18, color: AppColors.primary),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _asking ? null : _askAnything,
+            child: _asking
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                : const Icon(Icons.send_rounded, size: 20, color: AppColors.primary),
+          ),
+        ],
       ),
     );
   }
@@ -279,37 +269,40 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final actions = _filteredActions;
     if (actions.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.all(20),
+        padding: EdgeInsets.all(12),
         child: Text('No matching action.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
       );
     }
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: actions.map((a) {
-          return InkWell(
-            onTap: _running ? null : () => _onActionTap(a),
-            borderRadius: BorderRadius.circular(18),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: AppColors.accentSoft,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.border),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxHeight: 130),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: actions.map((a) {
+            return InkWell(
+              onTap: _running ? null : () => _onActionTap(a),
+              borderRadius: BorderRadius.circular(18),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.accentSoft,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(a.icon, size: 14, color: AppColors.primary),
+                    const SizedBox(width: 6),
+                    Text(a.labelEn, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: AppColors.primary)),
+                  ],
+                ),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(a.icon, size: 14, color: AppColors.primary),
-                  const SizedBox(width: 6),
-                  Text(a.labelEn, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -615,7 +608,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 }
 
 // ============================================================
-// ACTION FORM SHEET — dynamic form built from action.fields
+// ACTION FORM SHEET
 // ============================================================
 class _ActionFormSheet extends StatefulWidget {
   final _ActionDef action;
@@ -633,6 +626,14 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
   final _priceCtrl = TextEditingController();
   final _availCtrl = TextEditingController();
 
+  @override
+  void initState() {
+    super.initState();
+    if (widget.action.fields.contains('date')) {
+      _date = DateTime.now();
+    }
+  }
+
   String _fmt(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   @override
@@ -646,7 +647,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
-      context: context, initialDate: DateTime.now(),
+      context: context, initialDate: _date ?? DateTime.now(),
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
@@ -691,8 +692,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
           children: [
             Text(widget.action.labelEn, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
             const SizedBox(height: 14),
-            if (fields.contains('date'))
-              _dateField('Date', _date, _pickDate),
+            if (fields.contains('date')) _dateField('Date', _date, _pickDate),
             if (fields.contains('start_date') || fields.contains('end_date'))
               _rangeField('Date range', _startDate, _endDate, _pickRange),
             if (fields.contains('search_term'))
@@ -734,7 +734,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
           child: Row(children: [
             const Icon(Icons.calendar_today, size: 15, color: AppColors.primary),
             const SizedBox(width: 8),
-            Text(value == null ? '$label (defaults to today)' : _fmt(value), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            Text(value == null ? label : _fmt(value), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           ]),
         ),
       ),
@@ -781,6 +781,21 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
       ),
     );
   }
+}
+
+// ============================================================
+// SHARED DONE BANNER
+// ============================================================
+Widget _doneBanner(String text) {
+  return Container(
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(color: AppColors.successSoft, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.success)),
+    child: Row(children: [
+      const Icon(Icons.check_circle, color: AppColors.success, size: 20),
+      const SizedBox(width: 10),
+      Expanded(child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success))),
+    ]),
+  );
 }
 
 // ============================================================
@@ -840,9 +855,7 @@ class _InventoryUpdateConfirmCardState extends State<_InventoryUpdateConfirmCard
   Widget build(BuildContext context) {
     final roomName = (widget.data['room_category_name'] ?? '').toString();
     final dateStr = (widget.data['date'] ?? '').toString();
-    if (widget.done) {
-      return _doneBanner('$roomName rate updated for $dateStr.');
-    }
+    if (widget.done) return _doneBanner('$roomName rate updated for $dateStr.');
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.primary, width: 1.2)),
@@ -890,20 +903,8 @@ class _InventoryUpdateConfirmCardState extends State<_InventoryUpdateConfirmCard
   }
 }
 
-Widget _doneBanner(String text) {
-  return Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(color: AppColors.successSoft, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.success)),
-    child: Row(children: [
-      const Icon(Icons.check_circle, color: AppColors.success, size: 20),
-      const SizedBox(width: 10),
-      Expanded(child: Text(text, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success))),
-    ]),
-  );
-}
-
 // ============================================================
-// NO-SHOW MARK CONFIRM CARD
+// NO-SHOW CONFIRM CARD
 // ============================================================
 class _NoShowConfirmCard extends StatefulWidget {
   final Map<String, dynamic> data;
@@ -1214,7 +1215,7 @@ class _BookingWizardCard extends StatefulWidget {
   State<_BookingWizardCard> createState() => _BookingWizardCardState();
 }
 
-enum _WizardStep { dates, rooms, guest, payment, confirm, done }
+enum _WizardStep { dates, rooms, guest, payment, done }
 
 class _BookingWizardCardState extends State<_BookingWizardCard> {
   _WizardStep _step = _WizardStep.dates;
@@ -1258,7 +1259,9 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
     setState(() { _loading = true; _error = null; });
     try {
       final uid = await ApiService.instance.getUserId();
-      final res = await ApiService.instance.postData(AppConfig.aiWizardCheckDates, {'user_id': uid, 'checkin': _fmtDate(_checkin!), 'checkout': _fmtDate(_checkout!)});
+      final res = await ApiService.instance.postData(AppConfig.aiWizardCheckDates, {
+        'user_id': uid, 'checkin': _fmtDate(_checkin!), 'checkout': _fmtDate(_checkout!),
+      });
       if (!mounted) return;
       setState(() { _availabilityData = Map<String, dynamic>.from(res.data as Map); _step = _WizardStep.rooms; });
     } catch (e) {
@@ -1346,15 +1349,14 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
   }
 
   Widget _wizardStepIndicator() {
-    final labels = ['Dates', 'Room', 'Guest', 'Payment'];
     final currentIndex = _step.index.clamp(0, 3);
     return Row(
-      children: List.generate(labels.length, (i) {
+      children: List.generate(4, (i) {
         final active = i <= currentIndex;
         return Expanded(
           child: Row(children: [
             Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: active ? AppColors.primary : AppColors.border)),
-            if (i < labels.length - 1) Expanded(child: Container(height: 1.5, color: active ? AppColors.primary : AppColors.border)),
+            if (i < 3) Expanded(child: Container(height: 1.5, color: active ? AppColors.primary : AppColors.border)),
           ]),
         );
       }),
@@ -1370,7 +1372,8 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
         InkWell(
           onTap: _pickDateRange,
           child: Container(
-            width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
             child: Row(children: [
               const Icon(Icons.calendar_today, size: 16, color: AppColors.primary),
@@ -1414,7 +1417,11 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
                 onTap: isAvailable ? () => _selectRoom(room) : null,
                 child: Container(
                   padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: isAvailable ? AppColors.background : AppColors.border.withOpacity(0.3), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+                  decoration: BoxDecoration(
+                    color: isAvailable ? AppColors.background : AppColors.border.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.border),
+                  ),
                   child: Row(children: [
                     Expanded(
                       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
