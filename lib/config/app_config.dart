@@ -5,11 +5,9 @@
 
 class AppConfig {
   // ============ LIVE BASE URL ============
-  // APIs live server pe hain - phone ko bas internet chahiye.
-  // (localhost / adb reverse ki koi zaroorat nahi)
   static const String baseUrl = 'https://live.billzify.com';
 
-  // ============ API ENDPOINTS (Django urls.py se match) ============
+  // ============ API ENDPOINTS ============
   static const String login = '/api_login/';
   static const String logout = '/api_logout/';
   static const String todayArrivals = '/api_todayarrivals/';
@@ -78,8 +76,6 @@ class AppConfig {
   static const String subuserPermissions = '/api/subuser/permissions/';
   static const String subuserDelete = '/api/subuser/delete/';
   static const String myPermissions = '/api/my-permissions/';
-  static const String aiChat = '/api/ai-assistant/chat/';
-  static const String aiFrequent = '/api/ai-assistant/frequent/';
   static const String aiUsage = '/api/ai-assistant/usage/';
   static const String aiConfirmInventoryUpdate = '/api/ai-assistant/confirm-inventory-update/';
   static const String aiConfirmNoshow = '/api/ai-assistant/confirm-noshow/';
@@ -87,7 +83,7 @@ class AppConfig {
   static const String aiConfirmInvoiceGenerate = '/api/ai-assistant/confirm-invoice-generate/';
   static const String aiWizardCheckDates = '/api/ai-assistant/wizard-check-dates/';
   static const String aiConfirmCreateBooking = '/api/ai-assistant/confirm-create-booking/';
-  static const String aiTypeahead = '/api/ai-assistant/typeahead/';
-  static const String aiStarterQuestions = '/api/ai-assistant/starter-questions/';
   static const String aiExportPdf = '/api/ai-assistant/export-pdf/';
+  static const String aiRunAction = '/api/ai-assistant/run-action/';
+  static const String aiAskAnything = '/api/ai-assistant/ask/';
 }
