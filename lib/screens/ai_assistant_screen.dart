@@ -62,18 +62,10 @@ class AiAssistantScreen extends StatefulWidget {
 }
 
 class _AiAssistantScreenState extends State<AiAssistantScreen> {
-  final TextEditingController _searchCtrl = TextEditingController();
   final TextEditingController _askCtrl = TextEditingController();
-  String _query = '';
   final List<_ResultBlock> _results = [];
   bool _running = false;
   bool _asking = false;
-
-  List<_ActionDef> get _filteredActions {
-    if (_query.trim().isEmpty) return kActions;
-    final q = _query.trim().toLowerCase();
-    return kActions.where((a) => a.labelEn.toLowerCase().contains(q) || a.id.contains(q)).toList();
-  }
 
   Future<void> _runAction(_ActionDef action, Map<String, dynamic> params) async {
     setState(() => _running = true);
@@ -158,7 +150,6 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   @override
   void dispose() {
-    _searchCtrl.dispose();
     _askCtrl.dispose();
     super.dispose();
   }
@@ -179,50 +170,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              _searchBar(),
               _actionGrid(),
               const Divider(height: 1, color: AppColors.border),
               Expanded(child: _resultsList()),
               _askAnythingBar(),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _searchBar() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.card,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: AppColors.border),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 14),
-        child: Row(
-          children: [
-            const Icon(Icons.search, size: 18, color: AppColors.textSecondary),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextField(
-                controller: _searchCtrl,
-                onChanged: (v) => setState(() => _query = v),
-                style: const TextStyle(fontSize: 14),
-                decoration: const InputDecoration(
-                  hintText: 'Find an action…',
-                  border: InputBorder.none,
-                  isCollapsed: true,
-                ),
-              ),
-            ),
-            if (_query.isNotEmpty)
-              InkWell(
-                onTap: () => setState(() { _searchCtrl.clear(); _query = ''; }),
-                child: const Icon(Icons.close, size: 16, color: AppColors.textSecondary),
-              ),
-          ],
         ),
       ),
     );
@@ -266,21 +219,14 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   }
 
   Widget _actionGrid() {
-    final actions = _filteredActions;
-    if (actions.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(12),
-        child: Text('No matching action.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-      );
-    }
     return ConstrainedBox(
-      constraints: const BoxConstraints(maxHeight: 130),
+      constraints: const BoxConstraints(maxHeight: 160),
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(14, 4, 14, 10),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
         child: Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: actions.map((a) {
+          children: kActions.map((a) {
             return InkWell(
               onTap: _running ? null : () => _onActionTap(a),
               borderRadius: BorderRadius.circular(18),
@@ -357,26 +303,16 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _dataCard(_ResultBlock r) {
     switch (r.resultType) {
-      case 'booking_list':
-        return _bookingListCard(List<dynamic>.from(r.data));
-      case 'inventory_list':
-        return _inventoryListCard(List<dynamic>.from(r.data));
-      case 'noshow_list':
-        return _noshowListCard(List<dynamic>.from(r.data));
-      case 'sales_report':
-        return _channelTableCard(List<dynamic>.from(r.data), valueKey: 'sales', valueLabel: 'Sales');
-      case 'commission_report':
-        return _channelTableCard(List<dynamic>.from(r.data), valueKey: 'commission', valueLabel: 'Commission');
-      case 'accounts_report':
-        return _receivablesCard(List<dynamic>.from(r.data));
-      case 'rate_suggestion':
-        return _rateSuggestionCard(Map<String, dynamic>.from(r.data as Map));
-      case 'rate_suggestion_range':
-        return _rateSuggestionRangeCard(List<dynamic>.from(r.data));
-      case 'action_confirm':
-        return _actionConfirmCard(r);
-      default:
-        return const SizedBox.shrink();
+      case 'booking_list': return _bookingListCard(List<dynamic>.from(r.data));
+      case 'inventory_list': return _inventoryListCard(List<dynamic>.from(r.data));
+      case 'noshow_list': return _noshowListCard(List<dynamic>.from(r.data));
+      case 'sales_report': return _channelTableCard(List<dynamic>.from(r.data), valueKey: 'sales', valueLabel: 'Sales');
+      case 'commission_report': return _channelTableCard(List<dynamic>.from(r.data), valueKey: 'commission', valueLabel: 'Commission');
+      case 'accounts_report': return _receivablesCard(List<dynamic>.from(r.data));
+      case 'rate_suggestion': return _rateSuggestionCard(Map<String, dynamic>.from(r.data as Map));
+      case 'rate_suggestion_range': return _rateSuggestionRangeCard(List<dynamic>.from(r.data));
+      case 'action_confirm': return _actionConfirmCard(r);
+      default: return const SizedBox.shrink();
     }
   }
 
@@ -398,28 +334,21 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             child: Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(border: Border(bottom: g != items.last ? const BorderSide(color: AppColors.border) : BorderSide.none)),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
-                          if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-                        ]),
-                        const SizedBox(height: 2),
-                        Text([channel, phone].where((s) => s.isNotEmpty).join('  ·  '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text('₹$amount', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    if (status.isNotEmpty) Text(status, style: const TextStyle(fontSize: 10, color: AppColors.primary)),
+              child: Row(children: [
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    Expanded(child: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+                    if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
                   ]),
-                ],
-              ),
+                  const SizedBox(height: 2),
+                  Text([channel, phone].where((s) => s.isNotEmpty).join('  ·  '), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                ])),
+                const SizedBox(width: 8),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Text('₹$amount', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  if (status.isNotEmpty) Text(status, style: const TextStyle(fontSize: 10, color: AppColors.primary)),
+                ]),
+              ]),
             ),
           );
         }).toList(),
@@ -463,12 +392,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(border: Border(bottom: g != items.last ? const BorderSide(color: AppColors.border) : BorderSide.none)),
             child: Row(children: [
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                  Text([phone, if (ref.isNotEmpty) '#$ref'].where((s) => s.isNotEmpty).join('  ·  '), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                ]),
-              ),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                Text([phone, if (ref.isNotEmpty) '#$ref'].where((s) => s.isNotEmpty).join('  ·  '), style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+              ])),
               Text('₹$amount', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
             ]),
           );
@@ -523,34 +450,31 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.4))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(spacing: 16, runSpacing: 6, children: [
-            _statPill('${d['total_bookings_30d']}', 'bookings (30d)'),
-            _statPill('${d['last_minute_pct']}%', 'last-minute'),
-            _statPill('${d['avg_lead_days']}d', 'avg lead time'),
-          ]),
-          if ((d['categories'] as List?)?.isNotEmpty == true) ...[
-            const SizedBox(height: 10),
-            const Divider(height: 1, color: AppColors.border),
-            const SizedBox(height: 8),
-            ...List<dynamic>.from(d['categories']).map((c) {
-              final cat = Map<String, dynamic>.from(c as Map);
-              final name = (cat['room_category_name'] ?? '').toString();
-              final current = cat['current_price']?.toString() ?? '0';
-              final suggested = cat['suggested_price']?.toString() ?? '0';
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 3),
-                child: Row(children: [
-                  Expanded(child: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                  Text('₹$current → ₹$suggested', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                ]),
-              );
-            }),
-          ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Wrap(spacing: 16, runSpacing: 6, children: [
+          _statPill('${d['total_bookings_30d']}', 'bookings (30d)'),
+          _statPill('${d['last_minute_pct']}%', 'last-minute'),
+          _statPill('${d['avg_lead_days']}d', 'avg lead time'),
+        ]),
+        if ((d['categories'] as List?)?.isNotEmpty == true) ...[
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: AppColors.border),
+          const SizedBox(height: 8),
+          ...List<dynamic>.from(d['categories']).map((c) {
+            final cat = Map<String, dynamic>.from(c as Map);
+            final name = (cat['room_category_name'] ?? '').toString();
+            final current = cat['current_price']?.toString() ?? '0';
+            final suggested = cat['suggested_price']?.toString() ?? '0';
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(children: [
+                Expanded(child: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
+                Text('₹$current → ₹$suggested', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              ]),
+            );
+          }),
         ],
-      ),
+      ]),
     );
   }
 
@@ -564,8 +488,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   Widget _rateSuggestionRangeCard(List<dynamic> items) {
     final byDate = <String, List<dynamic>>{};
     for (final item in items) {
-      final date = (item['date'] ?? '').toString();
-      byDate.putIfAbsent(date, () => []).add(item);
+      byDate.putIfAbsent((item['date'] ?? '').toString(), () => []).add(item);
     }
     return Container(
       decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
@@ -575,13 +498,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           return Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(border: Border(bottom: isLast ? BorderSide.none : const BorderSide(color: AppColors.border))),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(entry.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-                ...entry.value.map((r) => _RateRangeRow(data: Map<String, dynamic>.from(r as Map))),
-              ],
-            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(entry.key, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+              ...entry.value.map((r) => _RateRangeRow(data: Map<String, dynamic>.from(r as Map))),
+            ]),
           );
         }).toList(),
       ),
@@ -591,18 +511,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   Widget _actionConfirmCard(_ResultBlock r) {
     final data = Map<String, dynamic>.from(r.data as Map);
     final action = data['action']?.toString();
-    if (action == 'inventory_update') {
-      return _InventoryUpdateConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
-    }
-    if (action == 'noshow_mark') {
-      return _NoShowConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
-    }
-    if (action == 'booking_cancel') {
-      return _BookingCancelConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
-    }
-    if (action == 'invoice_generate') {
-      return _InvoiceGenerateConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
-    }
+    if (action == 'inventory_update') return _InventoryUpdateConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
+    if (action == 'noshow_mark') return _NoShowConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
+    if (action == 'booking_cancel') return _BookingCancelConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
+    if (action == 'invoice_generate') return _InvoiceGenerateConfirmCard(data: data, done: r.actionDone, onConfirmed: () => setState(() => r.actionDone = true));
     return const SizedBox.shrink();
   }
 }
@@ -622,15 +534,33 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
   DateTime? _startDate;
   DateTime? _endDate;
   final _searchCtrl = TextEditingController();
-  final _roomCatIdCtrl = TextEditingController();
   final _priceCtrl = TextEditingController();
   final _availCtrl = TextEditingController();
+
+  List<Map<String, dynamic>> _roomCategories = [];
+  String? _selectedRoomCatId;
+  bool _loadingCats = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.action.fields.contains('date')) {
-      _date = DateTime.now();
+    if (widget.action.fields.contains('date')) _date = DateTime.now();
+    if (widget.action.fields.contains('room_category_id')) _fetchRoomCategories();
+  }
+
+  Future<void> _fetchRoomCategories() async {
+    setState(() => _loadingCats = true);
+    try {
+      final uid = await ApiService.instance.getUserId();
+      final res = await ApiService.instance.getData(AppConfig.roomCategories, query: {'user_id': uid});
+      final list = (res.data['categories'] as List?) ?? [];
+      if (!mounted) return;
+      setState(() {
+        _roomCategories = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        if (_roomCategories.isNotEmpty) _selectedRoomCatId = _roomCategories.first['id']?.toString();
+      });
+    } catch (_) {} finally {
+      if (mounted) setState(() => _loadingCats = false);
     }
   }
 
@@ -639,7 +569,6 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
   @override
   void dispose() {
     _searchCtrl.dispose();
-    _roomCatIdCtrl.dispose();
     _priceCtrl.dispose();
     _availCtrl.dispose();
     super.dispose();
@@ -656,7 +585,8 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
 
   Future<void> _pickRange() async {
     final range = await showDateRangePicker(
-      context: context, firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      context: context,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
     if (range != null) setState(() { _startDate = range.start; _endDate = range.end; });
@@ -669,7 +599,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
     if (fields.contains('start_date') && _startDate != null) params['start_date'] = _fmt(_startDate!);
     if (fields.contains('end_date') && _endDate != null) params['end_date'] = _fmt(_endDate!);
     if (fields.contains('search_term')) params['search_term'] = _searchCtrl.text.trim();
-    if (fields.contains('room_category_id')) params['room_category_id'] = _roomCatIdCtrl.text.trim();
+    if (fields.contains('room_category_id') && _selectedRoomCatId != null) params['room_category_id'] = _selectedRoomCatId;
     if (fields.contains('new_price')) params['new_price'] = int.tryParse(_priceCtrl.text.trim());
     if (fields.contains('new_available')) params['new_available'] = int.tryParse(_availCtrl.text.trim());
     Navigator.of(context).pop(params);
@@ -697,8 +627,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
               _rangeField('Date range', _startDate, _endDate, _pickRange),
             if (fields.contains('search_term'))
               _textField('Guest name / phone / booking ID', _searchCtrl),
-            if (fields.contains('room_category_id'))
-              _textField('Room category ID', _roomCatIdCtrl, keyboardType: TextInputType.number),
+            if (fields.contains('room_category_id')) _roomCategoryDropdown(),
             if (fields.contains('new_price'))
               _textField('New price (₹)', _priceCtrl, keyboardType: TextInputType.number),
             if (fields.contains('new_available'))
@@ -718,6 +647,39 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _roomCategoryDropdown() {
+    if (_loadingCats) return const Padding(padding: EdgeInsets.only(bottom: 10), child: LinearProgressIndicator());
+    if (_roomCategories.isEmpty) return const Padding(padding: EdgeInsets.only(bottom: 10), child: Text('No room categories found.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)));
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Room category', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          const SizedBox(height: 4),
+          Container(
+            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedRoomCatId,
+                isExpanded: true,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                items: _roomCategories.map((cat) {
+                  return DropdownMenuItem<String>(
+                    value: cat['id']?.toString(),
+                    child: Text(cat['category_name']?.toString() ?? ''),
+                  );
+                }).toList(),
+                onChanged: (v) => setState(() => _selectedRoomCatId = v),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -859,34 +821,31 @@ class _InventoryUpdateConfirmCardState extends State<_InventoryUpdateConfirmCard
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.primary, width: 1.2)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Icon(Icons.tune, size: 16, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Expanded(child: Text('$roomName · $dateStr', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-          ]),
-          const SizedBox(height: 12),
-          Row(children: [
-            Expanded(child: _confirmField('Price (₹)', _priceCtrl)),
-            const SizedBox(width: 10),
-            Expanded(child: _confirmField('Available rooms', _availCtrl)),
-          ]),
-          if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity, height: 40,
-            child: ElevatedButton(
-              onPressed: _saving ? null : _save,
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-              child: _saving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.tune, size: 16, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Expanded(child: Text('$roomName · $dateStr', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+        ]),
+        const SizedBox(height: 12),
+        Row(children: [
+          Expanded(child: _confirmField('Price (₹)', _priceCtrl)),
+          const SizedBox(width: 10),
+          Expanded(child: _confirmField('Available rooms', _availCtrl)),
+        ]),
+        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity, height: 40,
+          child: ElevatedButton(
+            onPressed: _saving ? null : _save,
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            child: _saving
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 
@@ -943,31 +902,28 @@ class _NoShowConfirmCardState extends State<_NoShowConfirmCard> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: const Border.fromBorderSide(BorderSide(color: Color(0xFFEF4444), width: 1.2))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Icon(Icons.event_busy_outlined, size: 16, color: Color(0xFFEF4444)),
-            const SizedBox(width: 6),
-            Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-            if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-          ]),
-          const SizedBox(height: 4),
-          Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity, height: 40,
-            child: ElevatedButton(
-              onPressed: _saving ? null : _confirm,
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-              child: _saving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Confirm No-Show', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.event_busy_outlined, size: 16, color: Color(0xFFEF4444)),
+          const SizedBox(width: 6),
+          Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+          if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        ]),
+        const SizedBox(height: 4),
+        Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity, height: 40,
+          child: ElevatedButton(
+            onPressed: _saving ? null : _confirm,
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            child: _saving
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Confirm No-Show', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }
@@ -1086,54 +1042,48 @@ class _BookingCancelConfirmCardState extends State<_BookingCancelConfirmCard> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: const Border.fromBorderSide(BorderSide(color: Color(0xFFEF4444), width: 1.4))),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFEF4444)),
-            const SizedBox(width: 6),
-            const Expanded(child: Text('This will permanently cancel the booking', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFFEF4444)))),
-          ]),
-          const SizedBox(height: 10),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-                  if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                ]),
-                if (ci.isNotEmpty || co.isNotEmpty) ...[const SizedBox(height: 2), Text('$ci → $co', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary))],
-                const SizedBox(height: 2),
-                Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
-          const SizedBox(height: 10),
-          InkWell(
-            onTap: () => setState(() => _checkedWarning = !_checkedWarning),
-            child: Row(children: [
-              Icon(_checkedWarning ? Icons.check_box : Icons.check_box_outline_blank, size: 18, color: _checkedWarning ? AppColors.primary : AppColors.textSecondary),
-              const SizedBox(width: 6),
-              const Expanded(child: Text('I understand this cannot be undone', style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFEF4444)),
+          const SizedBox(width: 6),
+          const Expanded(child: Text('This will permanently cancel the booking', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFFEF4444)))),
+        ]),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+              if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
             ]),
+            if (ci.isNotEmpty || co.isNotEmpty) ...[const SizedBox(height: 2), Text('$ci → $co', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary))],
+            const SizedBox(height: 2),
+            Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        InkWell(
+          onTap: () => setState(() => _checkedWarning = !_checkedWarning),
+          child: Row(children: [
+            Icon(_checkedWarning ? Icons.check_box : Icons.check_box_outline_blank, size: 18, color: _checkedWarning ? AppColors.primary : AppColors.textSecondary),
+            const SizedBox(width: 6),
+            const Expanded(child: Text('I understand this cannot be undone', style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary))),
+          ]),
+        ),
+        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity, height: 40,
+          child: ElevatedButton(
+            onPressed: (_saving || !_checkedWarning) ? null : _confirm,
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), disabledBackgroundColor: AppColors.border, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            child: _saving
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Confirm Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
-          if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity, height: 40,
-            child: ElevatedButton(
-              onPressed: (_saving || !_checkedWarning) ? null : _confirm,
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), disabledBackgroundColor: AppColors.border, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-              child: _saving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Confirm Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }
@@ -1178,31 +1128,28 @@ class _InvoiceGenerateConfirmCardState extends State<_InvoiceGenerateConfirmCard
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.primary, width: 1.2)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(children: [
-            const Icon(Icons.receipt_long_outlined, size: 16, color: AppColors.primary),
-            const SizedBox(width: 6),
-            Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-            if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-          ]),
-          const SizedBox(height: 4),
-          Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-          if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity, height: 40,
-            child: ElevatedButton(
-              onPressed: _saving ? null : _confirm,
-              style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-              child: _saving
-                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                  : const Text('Generate Invoice', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.receipt_long_outlined, size: 16, color: AppColors.primary),
+          const SizedBox(width: 6),
+          Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
+          if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        ]),
+        const SizedBox(height: 4),
+        Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity, height: 40,
+          child: ElevatedButton(
+            onPressed: _saving ? null : _confirm,
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            child: _saving
+                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Generate Invoice', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }
@@ -1333,18 +1280,15 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.primary, width: 1.2)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _wizardStepIndicator(),
-          const SizedBox(height: 12),
-          if (_step == _WizardStep.dates) _datesStep(),
-          if (_step == _WizardStep.rooms) _roomsStep(),
-          if (_step == _WizardStep.guest) _guestStep(),
-          if (_step == _WizardStep.payment) _paymentStep(),
-          if (_error != null) ...[const SizedBox(height: 10), Text(_error!, style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626)))],
-        ],
-      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        _wizardStepIndicator(),
+        const SizedBox(height: 12),
+        if (_step == _WizardStep.dates) _datesStep(),
+        if (_step == _WizardStep.rooms) _roomsStep(),
+        if (_step == _WizardStep.guest) _guestStep(),
+        if (_step == _WizardStep.payment) _paymentStep(),
+        if (_error != null) ...[const SizedBox(height: 10), Text(_error!, style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626)))],
+      ]),
     );
   }
 
@@ -1353,182 +1297,163 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
     return Row(
       children: List.generate(4, (i) {
         final active = i <= currentIndex;
-        return Expanded(
-          child: Row(children: [
-            Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: active ? AppColors.primary : AppColors.border)),
-            if (i < 3) Expanded(child: Container(height: 1.5, color: active ? AppColors.primary : AppColors.border)),
-          ]),
-        );
+        return Expanded(child: Row(children: [
+          Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: active ? AppColors.primary : AppColors.border)),
+          if (i < 3) Expanded(child: Container(height: 1.5, color: active ? AppColors.primary : AppColors.border)),
+        ]));
       }),
     );
   }
 
   Widget _datesStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Select check-in & check-out', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        const SizedBox(height: 10),
-        InkWell(
-          onTap: _pickDateRange,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
-            child: Row(children: [
-              const Icon(Icons.calendar_today, size: 16, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Text(_checkin == null ? 'Tap to select dates' : '${_fmtDate(_checkin!)}  →  ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-            ]),
-          ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Select check-in & check-out', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+      const SizedBox(height: 10),
+      InkWell(
+        onTap: _pickDateRange,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+          child: Row(children: [
+            const Icon(Icons.calendar_today, size: 16, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Text(_checkin == null ? 'Tap to select dates' : '${_fmtDate(_checkin!)}  →  ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          ]),
         ),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity, height: 40,
-          child: ElevatedButton(
-            onPressed: _loading ? null : _checkAvailability,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-            child: _loading
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Check Availability', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-          ),
+      ),
+      const SizedBox(height: 12),
+      SizedBox(
+        width: double.infinity, height: 40,
+        child: ElevatedButton(
+          onPressed: _loading ? null : _checkAvailability,
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+          child: _loading
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Check Availability', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
         ),
-      ],
-    );
+      ),
+    ]);
   }
 
   Widget _roomsStep() {
     final rooms = (_availabilityData?['rooms'] as List?) ?? [];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Select a room category', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        const SizedBox(height: 10),
-        if (rooms.isEmpty)
-          const Text('No rooms available for these dates.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))
-        else
-          ...rooms.map((r) {
-            final room = Map<String, dynamic>.from(r as Map);
-            final available = (room['available'] as num?)?.toInt() ?? 0;
-            final isAvailable = available > 0;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                onTap: isAvailable ? () => _selectRoom(room) : null,
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: isAvailable ? AppColors.background : AppColors.border.withOpacity(0.3),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Row(children: [
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(room['name']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                        Text(isAvailable ? '$available available' : 'Sold out', style: TextStyle(fontSize: 11, color: isAvailable ? AppColors.textSecondary : const Color(0xFFDC2626))),
-                      ]),
-                    ),
-                    Text('₹${room['price']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                    if (isAvailable) const Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
-                  ]),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Select a room category', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+      const SizedBox(height: 10),
+      if (rooms.isEmpty)
+        const Text('No rooms available for these dates.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))
+      else
+        ...rooms.map((r) {
+          final room = Map<String, dynamic>.from(r as Map);
+          final available = (room['available'] as num?)?.toInt() ?? 0;
+          final isAvailable = available > 0;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              onTap: isAvailable ? () => _selectRoom(room) : null,
+              child: Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isAvailable ? AppColors.background : AppColors.border.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.border),
                 ),
+                child: Row(children: [
+                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(room['name']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                    Text(isAvailable ? '$available available' : 'Sold out', style: TextStyle(fontSize: 11, color: isAvailable ? AppColors.textSecondary : const Color(0xFFDC2626))),
+                  ])),
+                  Text('₹${room['price']}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                  if (isAvailable) const Icon(Icons.chevron_right, size: 18, color: AppColors.textSecondary),
+                ]),
               ),
-            );
-          }),
-      ],
-    );
+            ),
+          );
+        }),
+    ]);
   }
 
   Widget _guestStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('${_selectedRoom?['name'] ?? ''} · ${_fmtDate(_checkin!)} → ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        const SizedBox(height: 10),
-        const Text('Guest details', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-        const SizedBox(height: 8),
-        _wizardTextField('Guest name', _nameCtrl),
-        const SizedBox(height: 8),
-        _wizardTextField('Phone number', _phoneCtrl, keyboardType: TextInputType.phone),
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity, height: 40,
-          child: ElevatedButton(
-            onPressed: _goToPayment,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-            child: const Text('Next', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-          ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${_selectedRoom?['name'] ?? ''} · ${_fmtDate(_checkin!)} → ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      const SizedBox(height: 10),
+      const Text('Guest details', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+      const SizedBox(height: 8),
+      _wizardTextField('Guest name', _nameCtrl),
+      const SizedBox(height: 8),
+      _wizardTextField('Phone number', _phoneCtrl, keyboardType: TextInputType.phone),
+      const SizedBox(height: 12),
+      SizedBox(
+        width: double.infinity, height: 40,
+        child: ElevatedButton(
+          onPressed: _goToPayment,
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+          child: const Text('Next', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
         ),
-      ],
-    );
+      ),
+    ]);
   }
 
   Widget _paymentStep() {
     final advance = double.tryParse(_advanceCtrl.text.trim()) ?? 0;
     final remaining = (_grandTotal - advance).clamp(0, double.infinity);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(_nameCtrl.text.trim(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            Text('${_selectedRoom?['name'] ?? ''} · ${_nights.toInt()} night(s)', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-            const SizedBox(height: 4),
-            Text('Total: ₹${_grandTotal.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-          ]),
-        ),
-        const SizedBox(height: 10),
-        _wizardTextField('Advance amount (₹)', _advanceCtrl, keyboardType: TextInputType.number, onChanged: (_) => setState(() {})),
-        const SizedBox(height: 4),
-        Text('Remaining: ₹${remaining.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        const SizedBox(height: 8),
-        Row(
-          children: ['cash', 'online', 'card'].map((mode) {
-            final selected = _paymentMode == mode;
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: InkWell(
-                onTap: () => setState(() => _paymentMode = mode),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(color: selected ? AppColors.primary : AppColors.accentSoft, borderRadius: BorderRadius.circular(16)),
-                  child: Text(mode, style: TextStyle(fontSize: 11, color: selected ? Colors.white : AppColors.primary)),
-                ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(_nameCtrl.text.trim(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+          Text('${_selectedRoom?['name'] ?? ''} · ${_nights.toInt()} night(s)', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          const SizedBox(height: 4),
+          Text('Total: ₹${_grandTotal.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        ]),
+      ),
+      const SizedBox(height: 10),
+      _wizardTextField('Advance amount (₹)', _advanceCtrl, keyboardType: TextInputType.number, onChanged: (_) => setState(() {})),
+      const SizedBox(height: 4),
+      Text('Remaining: ₹${remaining.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      const SizedBox(height: 8),
+      Row(
+        children: ['cash', 'online', 'card'].map((mode) {
+          final selected = _paymentMode == mode;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: InkWell(
+              onTap: () => setState(() => _paymentMode = mode),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: selected ? AppColors.primary : AppColors.accentSoft, borderRadius: BorderRadius.circular(16)),
+                child: Text(mode, style: TextStyle(fontSize: 11, color: selected ? Colors.white : AppColors.primary)),
               ),
-            );
-          }).toList(),
+            ),
+          );
+        }).toList(),
+      ),
+      const SizedBox(height: 14),
+      SizedBox(
+        width: double.infinity, height: 42,
+        child: ElevatedButton(
+          onPressed: _loading ? null : _createBooking,
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+          child: _loading
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Create Booking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         ),
-        const SizedBox(height: 14),
-        SizedBox(
-          width: double.infinity, height: 42,
-          child: ElevatedButton(
-            onPressed: _loading ? null : _createBooking,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-            child: _loading
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Create Booking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
-          ),
-        ),
-      ],
-    );
+      ),
+    ]);
   }
 
   Widget _wizardTextField(String label, TextEditingController ctrl, {TextInputType? keyboardType, void Function(String)? onChanged}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        const SizedBox(height: 4),
-        Container(
-          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: TextField(controller: ctrl, keyboardType: keyboardType, onChanged: onChanged, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true)),
-        ),
-      ],
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      const SizedBox(height: 4),
+      Container(
+        decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        child: TextField(controller: ctrl, keyboardType: keyboardType, onChanged: onChanged, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600), decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true)),
+      ),
+    ]);
   }
 }
 
@@ -1568,26 +1493,23 @@ class _PdfDownloadButtonState extends State<_PdfDownloadButton> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: _downloading ? null : _download,
-          borderRadius: BorderRadius.circular(10),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              _downloading
-                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
-                  : const Icon(Icons.picture_as_pdf_outlined, size: 16, color: AppColors.primary),
-              const SizedBox(width: 8),
-              Text(_downloading ? 'Preparing PDF…' : 'Download as PDF', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.primary)),
-            ]),
-          ),
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      InkWell(
+        onTap: _downloading ? null : _download,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            _downloading
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+                : const Icon(Icons.picture_as_pdf_outlined, size: 16, color: AppColors.primary),
+            const SizedBox(width: 8),
+            Text(_downloading ? 'Preparing PDF…' : 'Download as PDF', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: AppColors.primary)),
+          ]),
         ),
-        if (_error != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_error!, style: const TextStyle(fontSize: 10.5, color: Color(0xFFDC2626)))),
-      ],
-    );
+      ),
+      if (_error != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text(_error!, style: const TextStyle(fontSize: 10.5, color: Color(0xFFDC2626)))),
+    ]);
   }
 }
