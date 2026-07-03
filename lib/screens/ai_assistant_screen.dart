@@ -42,6 +42,7 @@ class _ResultBlock {
   final bool pdfAvailable;
   final String? pdfType;
   final String? pdfDate;
+  final DateTime time;
   bool actionDone;
   _ResultBlock({
     required this.actionLabel,
@@ -52,7 +53,7 @@ class _ResultBlock {
     this.pdfType,
     this.pdfDate,
     this.actionDone = false,
-  });
+  }) : time = DateTime.now();
 }
 
 class AiAssistantScreen extends StatefulWidget {
@@ -64,11 +65,11 @@ class AiAssistantScreen extends StatefulWidget {
 class _AiAssistantScreenState extends State<AiAssistantScreen> {
   final TextEditingController _askCtrl = TextEditingController();
   final List<_ResultBlock> _results = [];
-  bool _running = false;
+  String? _runningActionId; // tracks WHICH button is loading
   bool _asking = false;
 
   Future<void> _runAction(_ActionDef action, Map<String, dynamic> params) async {
-    setState(() => _running = true);
+    setState(() => _runningActionId = action.id);
     try {
       final uid = await ApiService.instance.getUserId();
       final body = {'user_id': uid, 'action': action.id, ...params};
@@ -102,16 +103,17 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         _results.insert(0, _ResultBlock(actionLabel: action.labelEn, reply: friendlyError(e)));
       });
     } finally {
-      if (mounted) setState(() => _running = false);
+      if (mounted) setState(() => _runningActionId = null);
     }
   }
 
   Future<void> _onActionTap(_ActionDef action) async {
+    if (_runningActionId != null) return;
     if (action.id == 'booking_create') {
       setState(() {
         _results.insert(0, _ResultBlock(
           actionLabel: action.labelEn,
-          reply: 'Opening new booking wizard…',
+          reply: 'Fill in the details below to create a new booking.',
           resultType: 'open_booking_wizard',
         ));
       });
@@ -138,11 +140,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       final uid = await ApiService.instance.getUserId();
       final res = await ApiService.instance.postData(AppConfig.aiAskAnything, {'user_id': uid, 'question': q});
       setState(() {
-        _results.insert(0, _ResultBlock(actionLabel: 'Ask: $q', reply: (res.data['reply'] ?? '').toString()));
+        _results.insert(0, _ResultBlock(actionLabel: 'Ask Anything', reply: (res.data['reply'] ?? '').toString()));
         _askCtrl.clear();
       });
     } catch (e) {
-      setState(() => _results.insert(0, _ResultBlock(actionLabel: 'Ask: $q', reply: friendlyError(e))));
+      setState(() => _results.insert(0, _ResultBlock(actionLabel: 'Ask Anything', reply: friendlyError(e))));
     } finally {
       if (mounted) setState(() => _asking = false);
     }
@@ -152,6 +154,12 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   void dispose() {
     _askCtrl.dispose();
     super.dispose();
+  }
+
+  String _fmtTime(DateTime t) {
+    final h = t.hour.toString().padLeft(2, '0');
+    final m = t.minute.toString().padLeft(2, '0');
+    return '$h:$m';
   }
 
   @override
@@ -171,6 +179,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           child: Column(
             children: [
               _actionGrid(),
+              if (_runningActionId != null) _loadingBanner(),
               const Divider(height: 1, color: AppColors.border),
               Expanded(child: _resultsList()),
               _askAnythingBar(),
@@ -181,6 +190,20 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     );
   }
 
+  Widget _loadingBanner() {
+    final label = kActions.firstWhere((a) => a.id == _runningActionId, orElse: () => kActions.first).labelEn;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      color: AppColors.primary.withOpacity(0.08),
+      child: Row(children: [
+        const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+        const SizedBox(width: 10),
+        Text('Running: $label…', style: const TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+      ]),
+    );
+  }
+
   Widget _askAnythingBar() {
     return Container(
       padding: EdgeInsets.fromLTRB(14, 8, 14, MediaQuery.of(context).padding.bottom + 8),
@@ -188,33 +211,31 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         color: AppColors.card,
         border: const Border(top: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
-        children: [
-          const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
-          const SizedBox(width: 8),
-          Expanded(
-            child: TextField(
-              controller: _askCtrl,
-              style: const TextStyle(fontSize: 13),
-              textInputAction: TextInputAction.send,
-              onSubmitted: (_) => _askAnything(),
-              decoration: const InputDecoration(
-                hintText: 'Ask anything…',
-                hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-                border: InputBorder.none,
-                isCollapsed: true,
-              ),
+      child: Row(children: [
+        const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: _askCtrl,
+            style: const TextStyle(fontSize: 13),
+            textInputAction: TextInputAction.send,
+            onSubmitted: (_) => _askAnything(),
+            decoration: const InputDecoration(
+              hintText: 'Ask anything — e.g. how to improve occupancy?',
+              hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
+              border: InputBorder.none,
+              isCollapsed: true,
             ),
           ),
-          const SizedBox(width: 8),
-          InkWell(
-            onTap: _asking ? null : _askAnything,
-            child: _asking
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
-                : const Icon(Icons.send_rounded, size: 20, color: AppColors.primary),
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 8),
+        InkWell(
+          onTap: _asking ? null : _askAnything,
+          child: _asking
+              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
+              : const Icon(Icons.send_rounded, size: 20, color: AppColors.primary),
+        ),
+      ]),
     );
   }
 
@@ -227,24 +248,24 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           spacing: 8,
           runSpacing: 8,
           children: kActions.map((a) {
+            final isThisRunning = _runningActionId == a.id;
             return InkWell(
-              onTap: _running ? null : () => _onActionTap(a),
+              onTap: _runningActionId != null ? null : () => _onActionTap(a),
               borderRadius: BorderRadius.circular(18),
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
-                  color: AppColors.accentSoft,
+                  color: isThisRunning ? AppColors.primary : AppColors.accentSoft,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: AppColors.border),
+                  border: Border.all(color: isThisRunning ? AppColors.primary : AppColors.border),
                 ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(a.icon, size: 14, color: AppColors.primary),
-                    const SizedBox(width: 6),
-                    Text(a.labelEn, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: AppColors.primary)),
-                  ],
-                ),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  isThisRunning
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Icon(a.icon, size: 14, color: AppColors.primary),
+                  const SizedBox(width: 6),
+                  Text(a.labelEn, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: isThisRunning ? Colors.white : AppColors.primary)),
+                ]),
               ),
             );
           }).toList(),
@@ -258,7 +279,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       return const Center(
         child: Padding(
           padding: EdgeInsets.all(24),
-          child: Text('Tap a button above to get started.', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.touch_app_outlined, size: 40, color: AppColors.border),
+            SizedBox(height: 12),
+            Text('Tap a button above to get started.', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+          ]),
         ),
       );
     }
@@ -270,9 +295,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   }
 
   Widget _resultCard(_ResultBlock r) {
+    final isError = r.reply.toLowerCase().contains('error') || r.reply.toLowerCase().contains('went wrong');
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.card,
         borderRadius: BorderRadius.circular(14),
@@ -281,15 +306,39 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(r.actionLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-          const SizedBox(height: 4),
-          Text(r.reply, style: const TextStyle(fontSize: 13.5, height: 1.4, color: AppColors.textPrimary)),
-          if (r.resultType == 'open_booking_wizard')
-            Padding(padding: const EdgeInsets.only(top: 10), child: _BookingWizardCard()),
-          if (r.data != null && _hasContent(r.data))
-            Padding(padding: const EdgeInsets.only(top: 10), child: _dataCard(r)),
-          if (r.pdfAvailable)
-            Padding(padding: const EdgeInsets.only(top: 10), child: _PdfDownloadButton(pdfType: r.pdfType!, pdfDate: r.pdfDate ?? '')),
+          // Header strip — clearly shows WHICH action this result is for
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isError ? const Color(0xFFFEE2E2) : AppColors.accentSoft,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
+            ),
+            child: Row(children: [
+              Icon(
+                isError ? Icons.error_outline : Icons.check_circle_outline,
+                size: 14,
+                color: isError ? const Color(0xFFDC2626) : AppColors.primary,
+              ),
+              const SizedBox(width: 6),
+              Expanded(child: Text(r.actionLabel, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: isError ? const Color(0xFFDC2626) : AppColors.primary))),
+              Text(_fmtTime(r.time), style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+            ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(r.reply, style: const TextStyle(fontSize: 13.5, height: 1.4, color: AppColors.textPrimary)),
+                if (r.resultType == 'open_booking_wizard')
+                  Padding(padding: const EdgeInsets.only(top: 10), child: _BookingWizardCard()),
+                if (r.data != null && _hasContent(r.data))
+                  Padding(padding: const EdgeInsets.only(top: 10), child: _dataCard(r)),
+                if (r.pdfAvailable)
+                  Padding(padding: const EdgeInsets.only(top: 10), child: _PdfDownloadButton(pdfType: r.pdfType!, pdfDate: r.pdfDate ?? '')),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -318,7 +367,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _bookingListCard(List<dynamic> items) {
     return Container(
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(
         children: items.take(10).map((g) {
           final name = (g['guest_name'] ?? '-').toString();
@@ -358,7 +407,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _inventoryListCard(List<dynamic> items) {
     return Container(
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(
         children: items.map((r) {
           final name = (r['roomCode'] ?? '-').toString();
@@ -381,7 +430,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _noshowListCard(List<dynamic> items) {
     return Container(
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(
         children: items.take(10).map((g) {
           final name = (g['guest_name'] ?? '-').toString();
@@ -406,7 +455,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _channelTableCard(List<dynamic> items, {required String valueKey, required String valueLabel}) {
     return Container(
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(
         children: items.take(10).map((c) {
           final channel = (c['channel'] ?? '-').toString();
@@ -426,7 +475,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _receivablesCard(List<dynamic> items) {
     return Container(
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(
         children: items.take(10).map((r) {
           final guest = (r['guest'] ?? '-').toString();
@@ -449,7 +498,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final color = direction == 'increase' ? AppColors.success : direction == 'decrease' ? const Color(0xFFEF4444) : AppColors.primary;
     return Container(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: color.withOpacity(0.4))),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withOpacity(0.4))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Wrap(spacing: 16, runSpacing: 6, children: [
           _statPill('${d['total_bookings_30d']}', 'bookings (30d)'),
@@ -491,7 +540,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       byDate.putIfAbsent((item['date'] ?? '').toString(), () => []).add(item);
     }
     return Container(
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(
         children: byDate.entries.map((entry) {
           final isLast = entry.key == byDate.keys.last;
@@ -553,13 +602,28 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
     try {
       final uid = await ApiService.instance.getUserId();
       final res = await ApiService.instance.getData(AppConfig.roomCategories, query: {'user_id': uid});
-      final list = (res.data['categories'] as List?) ?? [];
+      final raw = res.data;
+      // Try multiple possible response keys
+      List<dynamic> list = [];
+      if (raw is Map) {
+        list = (raw['categories'] as List?) ??
+            (raw['room_categories'] as List?) ??
+            (raw['data'] as List?) ??
+            (raw['rooms'] as List?) ??
+            [];
+      } else if (raw is List) {
+        list = raw;
+      }
       if (!mounted) return;
       setState(() {
         _roomCategories = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-        if (_roomCategories.isNotEmpty) _selectedRoomCatId = _roomCategories.first['id']?.toString();
+        if (_roomCategories.isNotEmpty) {
+          _selectedRoomCatId = (_roomCategories.first['id'] ?? _roomCategories.first['category_id'])?.toString();
+        }
       });
-    } catch (_) {} finally {
+    } catch (e) {
+      // silently fail — user will see "No categories found"
+    } finally {
       if (mounted) setState(() => _loadingCats = false);
     }
   }
@@ -600,8 +664,8 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
     if (fields.contains('end_date') && _endDate != null) params['end_date'] = _fmt(_endDate!);
     if (fields.contains('search_term')) params['search_term'] = _searchCtrl.text.trim();
     if (fields.contains('room_category_id') && _selectedRoomCatId != null) params['room_category_id'] = _selectedRoomCatId;
-    if (fields.contains('new_price')) params['new_price'] = int.tryParse(_priceCtrl.text.trim());
-    if (fields.contains('new_available')) params['new_available'] = int.tryParse(_availCtrl.text.trim());
+    if (fields.contains('new_price') && _priceCtrl.text.trim().isNotEmpty) params['new_price'] = int.tryParse(_priceCtrl.text.trim());
+    if (fields.contains('new_available') && _availCtrl.text.trim().isNotEmpty) params['new_available'] = int.tryParse(_availCtrl.text.trim());
     Navigator.of(context).pop(params);
   }
 
@@ -620,7 +684,10 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(widget.action.labelEn, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            Row(children: [
+              Expanded(child: Text(widget.action.labelEn, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700))),
+              InkWell(onTap: () => Navigator.pop(context), child: const Icon(Icons.close, size: 20, color: AppColors.textSecondary)),
+            ]),
             const SizedBox(height: 14),
             if (fields.contains('date')) _dateField('Date', _date, _pickDate),
             if (fields.contains('start_date') || fields.contains('end_date'))
@@ -652,35 +719,54 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
   }
 
   Widget _roomCategoryDropdown() {
-    if (_loadingCats) return const Padding(padding: EdgeInsets.only(bottom: 10), child: LinearProgressIndicator());
-    if (_roomCategories.isEmpty) return const Padding(padding: EdgeInsets.only(bottom: 10), child: Text('No room categories found.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)));
+    if (_loadingCats) {
+      return const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Row(children: [
+          SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary)),
+          SizedBox(width: 8),
+          Text('Loading room categories…', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+        ]),
+      );
+    }
+    if (_roomCategories.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Row(children: [
+          const Icon(Icons.warning_amber_rounded, size: 14, color: Color(0xFFEF4444)),
+          const SizedBox(width: 6),
+          const Text('No room categories found.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          const SizedBox(width: 8),
+          InkWell(
+            onTap: _fetchRoomCategories,
+            child: const Text('Retry', style: TextStyle(fontSize: 12, color: AppColors.primary, fontWeight: FontWeight.w600)),
+          ),
+        ]),
+      );
+    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Room category', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-          const SizedBox(height: 4),
-          Container(
-            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _selectedRoomCatId,
-                isExpanded: true,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
-                items: _roomCategories.map((cat) {
-                  return DropdownMenuItem<String>(
-                    value: cat['id']?.toString(),
-                    child: Text(cat['category_name']?.toString() ?? ''),
-                  );
-                }).toList(),
-                onChanged: (v) => setState(() => _selectedRoomCatId = v),
-              ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Room category', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedRoomCatId,
+              isExpanded: true,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+              items: _roomCategories.map((cat) {
+                final id = (cat['id'] ?? cat['category_id'])?.toString() ?? '';
+                final name = (cat['category_name'] ?? cat['name'] ?? id).toString();
+                return DropdownMenuItem<String>(value: id, child: Text(name));
+              }).toList(),
+              onChanged: (v) => setState(() => _selectedRoomCatId = v),
             ),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 
@@ -725,22 +811,19 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
   Widget _textField(String label, TextEditingController ctrl, {TextInputType? keyboardType}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-          const SizedBox(height: 4),
-          Container(
-            decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
-            padding: const EdgeInsets.symmetric(horizontal: 10),
-            child: TextField(
-              controller: ctrl, keyboardType: keyboardType,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true),
-            ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        const SizedBox(height: 4),
+        Container(
+          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.border)),
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          child: TextField(
+            controller: ctrl, keyboardType: keyboardType,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+            decoration: const InputDecoration(border: InputBorder.none, isCollapsed: true),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }
@@ -751,7 +834,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
 Widget _doneBanner(String text) {
   return Container(
     padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(color: AppColors.successSoft, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.success)),
+    decoration: BoxDecoration(color: AppColors.successSoft, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.success)),
     child: Row(children: [
       const Icon(Icons.check_circle, color: AppColors.success, size: 20),
       const SizedBox(width: 10),
@@ -786,11 +869,7 @@ class _InventoryUpdateConfirmCardState extends State<_InventoryUpdateConfirmCard
   }
 
   @override
-  void dispose() {
-    _priceCtrl.dispose();
-    _availCtrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _priceCtrl.dispose(); _availCtrl.dispose(); super.dispose(); }
 
   Future<void> _save() async {
     setState(() { _saving = true; _error = null; });
@@ -819,30 +898,29 @@ class _InventoryUpdateConfirmCardState extends State<_InventoryUpdateConfirmCard
     final dateStr = (widget.data['date'] ?? '').toString();
     if (widget.done) return _doneBanner('$roomName rate updated for $dateStr.');
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.primary, width: 1.2)),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.primary, width: 1.2)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.tune, size: 16, color: AppColors.primary),
+          const Icon(Icons.tune, size: 15, color: AppColors.primary),
           const SizedBox(width: 6),
           Expanded(child: Text('$roomName · $dateStr', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
         ]),
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
         Row(children: [
           Expanded(child: _confirmField('Price (₹)', _priceCtrl)),
           const SizedBox(width: 10),
           Expanded(child: _confirmField('Available rooms', _availCtrl)),
         ]),
-        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity, height: 40,
+        if (_error != null) ...[const SizedBox(height: 6), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        const SizedBox(height: 10),
+        SizedBox(width: double.infinity, height: 38,
           child: ElevatedButton(
             onPressed: _saving ? null : _save,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0),
             child: _saving
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Text('Save Changes', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ),
       ]),
@@ -900,26 +978,23 @@ class _NoShowConfirmCardState extends State<_NoShowConfirmCard> {
     final amount = widget.data['amount']?.toString() ?? '0';
     if (widget.done) return _doneBanner('$guestName marked as no-show.');
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: const Border.fromBorderSide(BorderSide(color: Color(0xFFEF4444), width: 1.2))),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: const Border.fromBorderSide(BorderSide(color: Color(0xFFEF4444), width: 1.2))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.event_busy_outlined, size: 16, color: Color(0xFFEF4444)),
+          const Icon(Icons.event_busy_outlined, size: 15, color: Color(0xFFEF4444)),
           const SizedBox(width: 6),
           Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-          if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          if (ref.isNotEmpty) Text('#$ref · ₹$amount', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
         ]),
-        const SizedBox(height: 4),
-        Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity, height: 40,
+        if (_error != null) ...[const SizedBox(height: 6), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        const SizedBox(height: 10),
+        SizedBox(width: double.infinity, height: 38,
           child: ElevatedButton(
             onPressed: _saving ? null : _confirm,
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0),
             child: _saving
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Confirm No-Show', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ),
@@ -984,8 +1059,7 @@ class _RateRangeRowState extends State<_RateRangeRow> {
         if (_applied)
           const Icon(Icons.check_circle, size: 18, color: AppColors.success)
         else
-          SizedBox(
-            height: 28,
+          SizedBox(height: 28,
             child: ElevatedButton(
               onPressed: _applying ? null : _apply,
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, padding: const EdgeInsets.symmetric(horizontal: 10), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0),
@@ -1040,29 +1114,28 @@ class _BookingCancelConfirmCardState extends State<_BookingCancelConfirmCard> {
     final co = (widget.data['check_out_date'] ?? '').toString();
     if (widget.done) return _doneBanner('$guestName\'s booking cancelled.');
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: const Border.fromBorderSide(BorderSide(color: Color(0xFFEF4444), width: 1.4))),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: const Border.fromBorderSide(BorderSide(color: Color(0xFFEF4444), width: 1.4))),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.warning_amber_rounded, size: 18, color: Color(0xFFEF4444)),
+          const Icon(Icons.warning_amber_rounded, size: 16, color: Color(0xFFEF4444)),
           const SizedBox(width: 6),
           const Expanded(child: Text('This will permanently cancel the booking', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFFEF4444)))),
         ]),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
+          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
               Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
               if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
             ]),
             if (ci.isNotEmpty || co.isNotEmpty) ...[const SizedBox(height: 2), Text('$ci → $co', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary))],
-            const SizedBox(height: 2),
             Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
           ]),
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
         InkWell(
           onTap: () => setState(() => _checkedWarning = !_checkedWarning),
           child: Row(children: [
@@ -1071,15 +1144,14 @@ class _BookingCancelConfirmCardState extends State<_BookingCancelConfirmCard> {
             const Expanded(child: Text('I understand this cannot be undone', style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary))),
           ]),
         ),
-        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        if (_error != null) ...[const SizedBox(height: 6), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
         const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity, height: 40,
+        SizedBox(width: double.infinity, height: 38,
           child: ElevatedButton(
             onPressed: (_saving || !_checkedWarning) ? null : _confirm,
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), disabledBackgroundColor: AppColors.border, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444), disabledBackgroundColor: AppColors.border, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0),
             child: _saving
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Confirm Cancel', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ),
@@ -1126,26 +1198,23 @@ class _InvoiceGenerateConfirmCardState extends State<_InvoiceGenerateConfirmCard
     final amount = widget.data['amount']?.toString() ?? '0';
     if (widget.done) return _doneBanner('Invoice generated for $guestName.');
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.primary, width: 1.2)),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.primary, width: 1.2)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
-          const Icon(Icons.receipt_long_outlined, size: 16, color: AppColors.primary),
+          const Icon(Icons.receipt_long_outlined, size: 15, color: AppColors.primary),
           const SizedBox(width: 6),
           Expanded(child: Text(guestName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13))),
-          if (ref.isNotEmpty) Text('#$ref', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          if (ref.isNotEmpty) Text('#$ref · ₹$amount', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
         ]),
-        const SizedBox(height: 4),
-        Text('₹$amount', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
-        const SizedBox(height: 12),
-        SizedBox(
-          width: double.infinity, height: 40,
+        if (_error != null) ...[const SizedBox(height: 6), Text(_error!, style: const TextStyle(fontSize: 11, color: Color(0xFFDC2626)))],
+        const SizedBox(height: 10),
+        SizedBox(width: double.infinity, height: 38,
           child: ElevatedButton(
             onPressed: _saving ? null : _confirm,
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0),
             child: _saving
-                ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                 : const Text('Generate Invoice', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
           ),
         ),
@@ -1179,12 +1248,7 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
   String _paymentMode = 'cash';
 
   @override
-  void dispose() {
-    _nameCtrl.dispose();
-    _phoneCtrl.dispose();
-    _advanceCtrl.dispose();
-    super.dispose();
-  }
+  void dispose() { _nameCtrl.dispose(); _phoneCtrl.dispose(); _advanceCtrl.dispose(); super.dispose(); }
 
   String _fmtDate(DateTime d) => '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
@@ -1199,16 +1263,11 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
   }
 
   Future<void> _checkAvailability() async {
-    if (_checkin == null || _checkout == null) {
-      setState(() => _error = 'Please select check-in and check-out dates.');
-      return;
-    }
+    if (_checkin == null || _checkout == null) { setState(() => _error = 'Please select dates.'); return; }
     setState(() { _loading = true; _error = null; });
     try {
       final uid = await ApiService.instance.getUserId();
-      final res = await ApiService.instance.postData(AppConfig.aiWizardCheckDates, {
-        'user_id': uid, 'checkin': _fmtDate(_checkin!), 'checkout': _fmtDate(_checkout!),
-      });
+      final res = await ApiService.instance.postData(AppConfig.aiWizardCheckDates, {'user_id': uid, 'checkin': _fmtDate(_checkin!), 'checkout': _fmtDate(_checkout!)});
       if (!mounted) return;
       setState(() { _availabilityData = Map<String, dynamic>.from(res.data as Map); _step = _WizardStep.rooms; });
     } catch (e) {
@@ -1219,23 +1278,14 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
     }
   }
 
-  void _selectRoom(Map<String, dynamic> room) {
-    setState(() { _selectedRoom = room; _roomQty = 1; _step = _WizardStep.guest; });
-  }
+  void _selectRoom(Map<String, dynamic> room) => setState(() { _selectedRoom = room; _roomQty = 1; _step = _WizardStep.guest; });
 
   void _goToPayment() {
-    if (_nameCtrl.text.trim().isEmpty || _phoneCtrl.text.trim().isEmpty) {
-      setState(() => _error = 'Guest name and phone are required.');
-      return;
-    }
+    if (_nameCtrl.text.trim().isEmpty || _phoneCtrl.text.trim().isEmpty) { setState(() => _error = 'Guest name and phone are required.'); return; }
     setState(() { _error = null; _step = _WizardStep.payment; });
   }
 
-  double get _nights {
-    if (_checkin == null || _checkout == null) return 1;
-    return _checkout!.difference(_checkin!).inDays.toDouble().clamp(1, 999);
-  }
-
+  double get _nights { if (_checkin == null || _checkout == null) return 1; return _checkout!.difference(_checkin!).inDays.toDouble().clamp(1, 999); }
   double get _pricePerNight => (_selectedRoom?['price'] as num?)?.toDouble() ?? 0;
   double get _grandTotal => _pricePerNight * _nights * _roomQty;
 
@@ -1246,20 +1296,11 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
       final advance = double.tryParse(_advanceCtrl.text.trim()) ?? 0;
       final remaining = (_grandTotal - advance).clamp(0, double.infinity);
       await ApiService.instance.postData(AppConfig.aiConfirmCreateBooking, {
-        'user_id': uid,
-        'checkin': _fmtDate(_checkin!),
-        'checkout': _fmtDate(_checkout!),
-        'guest_name': _nameCtrl.text.trim(),
-        'guest_contact': _phoneCtrl.text.trim(),
-        'total_guests': 1,
-        'payment_mode': _paymentMode,
-        'advance_amount': advance,
-        'grand_total': _grandTotal,
-        'total_base': _grandTotal,
-        'total_tax': 0,
-        'remaining_amount': remaining,
-        'special_request': '',
-        'is_occupancy_based': false,
+        'user_id': uid, 'checkin': _fmtDate(_checkin!), 'checkout': _fmtDate(_checkout!),
+        'guest_name': _nameCtrl.text.trim(), 'guest_contact': _phoneCtrl.text.trim(),
+        'total_guests': 1, 'payment_mode': _paymentMode, 'advance_amount': advance,
+        'grand_total': _grandTotal, 'total_base': _grandTotal, 'total_tax': 0,
+        'remaining_amount': remaining, 'special_request': '', 'is_occupancy_based': false,
         'rate_plan': _selectedRoom?['rate_plan_name'] ?? '',
         'rooms_data': [{'cat_id': _selectedRoom?['id'], 'qty': _roomQty, 'settle_total': _grandTotal, 'base': _grandTotal, 'gst': 0}],
         'extra_charges': {},
@@ -1278,8 +1319,8 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
   Widget build(BuildContext context) {
     if (_step == _WizardStep.done) return _doneBanner('Booking created for ${_nameCtrl.text.trim()}.');
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.card, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.primary, width: 1.2)),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.primary, width: 1.2)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _wizardStepIndicator(),
         const SizedBox(height: 12),
@@ -1287,54 +1328,42 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
         if (_step == _WizardStep.rooms) _roomsStep(),
         if (_step == _WizardStep.guest) _guestStep(),
         if (_step == _WizardStep.payment) _paymentStep(),
-        if (_error != null) ...[const SizedBox(height: 10), Text(_error!, style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626)))],
+        if (_error != null) ...[const SizedBox(height: 8), Text(_error!, style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626)))],
       ]),
     );
   }
 
   Widget _wizardStepIndicator() {
     final currentIndex = _step.index.clamp(0, 3);
-    return Row(
-      children: List.generate(4, (i) {
-        final active = i <= currentIndex;
-        return Expanded(child: Row(children: [
-          Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: active ? AppColors.primary : AppColors.border)),
-          if (i < 3) Expanded(child: Container(height: 1.5, color: active ? AppColors.primary : AppColors.border)),
-        ]));
-      }),
-    );
+    return Row(children: List.generate(4, (i) {
+      final active = i <= currentIndex;
+      return Expanded(child: Row(children: [
+        Container(width: 7, height: 7, decoration: BoxDecoration(shape: BoxShape.circle, color: active ? AppColors.primary : AppColors.border)),
+        if (i < 3) Expanded(child: Container(height: 1.5, color: active ? AppColors.primary : AppColors.border)),
+      ]));
+    }));
   }
 
-  Widget _datesStep() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Select check-in & check-out', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-      const SizedBox(height: 10),
-      InkWell(
-        onTap: _pickDateRange,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
-          child: Row(children: [
-            const Icon(Icons.calendar_today, size: 16, color: AppColors.primary),
-            const SizedBox(width: 8),
-            Text(_checkin == null ? 'Tap to select dates' : '${_fmtDate(_checkin!)}  →  ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-          ]),
-        ),
+  Widget _datesStep() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Select check-in & check-out', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+    const SizedBox(height: 10),
+    InkWell(onTap: _pickDateRange, child: Container(
+      width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+      child: Row(children: [
+        const Icon(Icons.calendar_today, size: 16, color: AppColors.primary), const SizedBox(width: 8),
+        Text(_checkin == null ? 'Tap to select dates' : '${_fmtDate(_checkin!)}  →  ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+      ]),
+    )),
+    const SizedBox(height: 12),
+    SizedBox(width: double.infinity, height: 38,
+      child: ElevatedButton(
+        onPressed: _loading ? null : _checkAvailability,
+        style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0),
+        child: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Check Availability', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       ),
-      const SizedBox(height: 12),
-      SizedBox(
-        width: double.infinity, height: 40,
-        child: ElevatedButton(
-          onPressed: _loading ? null : _checkAvailability,
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-          child: _loading
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('Check Availability', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        ),
-      ),
-    ]);
-  }
+    ),
+  ]);
 
   Widget _roomsStep() {
     final rooms = (_availabilityData?['rooms'] as List?) ?? [];
@@ -1348,17 +1377,10 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
           final room = Map<String, dynamic>.from(r as Map);
           final available = (room['available'] as num?)?.toInt() ?? 0;
           final isAvailable = available > 0;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: InkWell(
-              onTap: isAvailable ? () => _selectRoom(room) : null,
-              child: Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: isAvailable ? AppColors.background : AppColors.border.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
-                ),
+          return Padding(padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(onTap: isAvailable ? () => _selectRoom(room) : null,
+              child: Container(padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: isAvailable ? AppColors.background : AppColors.border.withOpacity(0.3), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
                 child: Row(children: [
                   Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Text(room['name']?.toString() ?? '-', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
@@ -1374,71 +1396,52 @@ class _BookingWizardCardState extends State<_BookingWizardCard> {
     ]);
   }
 
-  Widget _guestStep() {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('${_selectedRoom?['name'] ?? ''} · ${_fmtDate(_checkin!)} → ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-      const SizedBox(height: 10),
-      const Text('Guest details', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-      const SizedBox(height: 8),
-      _wizardTextField('Guest name', _nameCtrl),
-      const SizedBox(height: 8),
-      _wizardTextField('Phone number', _phoneCtrl, keyboardType: TextInputType.phone),
-      const SizedBox(height: 12),
-      SizedBox(
-        width: double.infinity, height: 40,
-        child: ElevatedButton(
-          onPressed: _goToPayment,
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-          child: const Text('Next', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-        ),
-      ),
-    ]);
-  }
+  Widget _guestStep() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Text('${_selectedRoom?['name'] ?? ''} · ${_fmtDate(_checkin!)} → ${_fmtDate(_checkout!)}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+    const SizedBox(height: 10),
+    const Text('Guest details', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+    const SizedBox(height: 8),
+    _wizardTextField('Guest name', _nameCtrl),
+    const SizedBox(height: 8),
+    _wizardTextField('Phone number', _phoneCtrl, keyboardType: TextInputType.phone),
+    const SizedBox(height: 12),
+    SizedBox(width: double.infinity, height: 38,
+      child: ElevatedButton(onPressed: _goToPayment, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0), child: const Text('Next', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+    ),
+  ]);
 
   Widget _paymentStep() {
     final advance = double.tryParse(_advanceCtrl.text.trim()) ?? 0;
     final remaining = (_grandTotal - advance).clamp(0, double.infinity);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
+      Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(10)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(_nameCtrl.text.trim(), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
           Text('${_selectedRoom?['name'] ?? ''} · ${_nights.toInt()} night(s)', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-          const SizedBox(height: 4),
           Text('Total: ₹${_grandTotal.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
         ]),
       ),
       const SizedBox(height: 10),
       _wizardTextField('Advance amount (₹)', _advanceCtrl, keyboardType: TextInputType.number, onChanged: (_) => setState(() {})),
-      const SizedBox(height: 4),
       Text('Remaining: ₹${remaining.toStringAsFixed(0)}', style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
       const SizedBox(height: 8),
-      Row(
-        children: ['cash', 'online', 'card'].map((mode) {
-          final selected = _paymentMode == mode;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              onTap: () => setState(() => _paymentMode = mode),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: selected ? AppColors.primary : AppColors.accentSoft, borderRadius: BorderRadius.circular(16)),
-                child: Text(mode, style: TextStyle(fontSize: 11, color: selected ? Colors.white : AppColors.primary)),
-              ),
+      Row(children: ['cash', 'online', 'card'].map((mode) {
+        final selected = _paymentMode == mode;
+        return Padding(padding: const EdgeInsets.only(right: 8),
+          child: InkWell(onTap: () => setState(() => _paymentMode = mode),
+            child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: selected ? AppColors.primary : AppColors.accentSoft, borderRadius: BorderRadius.circular(16)),
+              child: Text(mode, style: TextStyle(fontSize: 11, color: selected ? Colors.white : AppColors.primary)),
             ),
-          );
-        }).toList(),
-      ),
-      const SizedBox(height: 14),
-      SizedBox(
-        width: double.infinity, height: 42,
+          ),
+        );
+      }).toList()),
+      const SizedBox(height: 12),
+      SizedBox(width: double.infinity, height: 40,
         child: ElevatedButton(
           onPressed: _loading ? null : _createBooking,
-          style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
-          child: _loading
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('Create Booking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)), elevation: 0),
+          child: _loading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Create Booking', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700)),
         ),
       ),
     ]);
