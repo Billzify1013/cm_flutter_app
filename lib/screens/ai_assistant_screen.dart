@@ -63,10 +63,16 @@ class AiAssistantScreen extends StatefulWidget {
 }
 
 class _AiAssistantScreenState extends State<AiAssistantScreen> {
-  final TextEditingController _askCtrl = TextEditingController();
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _searchQuery = '';
   final List<_ResultBlock> _results = [];
-  String? _runningActionId; // tracks WHICH button is loading
-  bool _asking = false;
+  String? _runningActionId;
+
+  List<_ActionDef> get _filteredActions {
+    if (_searchQuery.trim().isEmpty) return kActions;
+    final q = _searchQuery.trim().toLowerCase();
+    return kActions.where((a) => a.labelEn.toLowerCase().contains(q) || a.id.contains(q)).toList();
+  }
 
   Future<void> _runAction(_ActionDef action, Map<String, dynamic> params) async {
     setState(() => _runningActionId = action.id);
@@ -132,27 +138,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     if (params != null) _runAction(action, params);
   }
 
-  Future<void> _askAnything() async {
-    final q = _askCtrl.text.trim();
-    if (q.isEmpty || _asking) return;
-    setState(() => _asking = true);
-    try {
-      final uid = await ApiService.instance.getUserId();
-      final res = await ApiService.instance.postData(AppConfig.aiAskAnything, {'user_id': uid, 'question': q});
-      setState(() {
-        _results.insert(0, _ResultBlock(actionLabel: 'Ask Anything', reply: (res.data['reply'] ?? '').toString()));
-        _askCtrl.clear();
-      });
-    } catch (e) {
-      setState(() => _results.insert(0, _ResultBlock(actionLabel: 'Ask Anything', reply: friendlyError(e))));
-    } finally {
-      if (mounted) setState(() => _asking = false);
-    }
-  }
-
   @override
   void dispose() {
-    _askCtrl.dispose();
+    _searchCtrl.dispose();
     super.dispose();
   }
 
@@ -178,11 +166,11 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         body: SafeArea(
           child: Column(
             children: [
+              _searchBar(),
               _actionGrid(),
               if (_runningActionId != null) _loadingBanner(),
               const Divider(height: 1, color: AppColors.border),
               Expanded(child: _resultsList()),
-              _askAnythingBar(),
             ],
           ),
         ),
@@ -204,42 +192,50 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     );
   }
 
-  Widget _askAnythingBar() {
-    return Container(
-      padding: EdgeInsets.fromLTRB(14, 8, 14, MediaQuery.of(context).padding.bottom + 8),
-      decoration: BoxDecoration(
-        color: AppColors.card,
-        border: const Border(top: BorderSide(color: AppColors.border)),
-      ),
-      child: Row(children: [
-        const Icon(Icons.auto_awesome, size: 16, color: AppColors.primary),
-        const SizedBox(width: 8),
-        Expanded(
-          child: TextField(
-            controller: _askCtrl,
-            style: const TextStyle(fontSize: 13),
-            textInputAction: TextInputAction.send,
-            onSubmitted: (_) => _askAnything(),
-            decoration: const InputDecoration(
-              hintText: 'Ask anything — e.g. how to improve occupancy?',
-              hintStyle: TextStyle(fontSize: 12.5, color: AppColors.textSecondary),
-              border: InputBorder.none,
-              isCollapsed: true,
+  Widget _searchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(color: AppColors.border),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        child: Row(children: [
+          const Icon(Icons.search, size: 16, color: AppColors.textSecondary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _searchQuery = v),
+              style: const TextStyle(fontSize: 13),
+              decoration: const InputDecoration(
+                hintText: 'Search actions…',
+                hintStyle: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                border: InputBorder.none,
+                isCollapsed: true,
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        InkWell(
-          onTap: _asking ? null : _askAnything,
-          child: _asking
-              ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.primary))
-              : const Icon(Icons.send_rounded, size: 20, color: AppColors.primary),
-        ),
-      ]),
+          if (_searchQuery.isNotEmpty)
+            InkWell(
+              onTap: () => setState(() { _searchCtrl.clear(); _searchQuery = ''; }),
+              child: const Icon(Icons.close, size: 16, color: AppColors.textSecondary),
+            ),
+        ]),
+      ),
     );
   }
 
   Widget _actionGrid() {
+    final actions = _filteredActions;
+    if (actions.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.fromLTRB(14, 8, 14, 10),
+        child: Text('No matching action.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+      );
+    }
     return ConstrainedBox(
       constraints: const BoxConstraints(maxHeight: 160),
       child: SingleChildScrollView(
@@ -247,7 +243,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
         child: Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: kActions.map((a) {
+          children: actions.map((a) {
             final isThisRunning = _runningActionId == a.id;
             return InkWell(
               onTap: _runningActionId != null ? null : () => _onActionTap(a),
@@ -495,34 +491,62 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
 
   Widget _rateSuggestionCard(Map<String, dynamic> d) {
     final direction = (d['direction'] ?? 'hold').toString();
-    final color = direction == 'increase' ? AppColors.success : direction == 'decrease' ? const Color(0xFFEF4444) : AppColors.primary;
+    final dirColor = direction == 'increase' ? AppColors.success : direction == 'decrease' ? const Color(0xFFEF4444) : AppColors.textSecondary;
+    final dirIcon = direction == 'increase' ? Icons.trending_up : direction == 'decrease' ? Icons.trending_down : Icons.trending_flat;
+    final categories = (d['categories'] as List?) ?? [];
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withOpacity(0.4))),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Wrap(spacing: 16, runSpacing: 6, children: [
-          _statPill('${d['total_bookings_30d']}', 'bookings (30d)'),
-          _statPill('${d['last_minute_pct']}%', 'last-minute'),
-          _statPill('${d['avg_lead_days']}d', 'avg lead time'),
-        ]),
-        if ((d['categories'] as List?)?.isNotEmpty == true) ...[
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: AppColors.border),
-          const SizedBox(height: 8),
-          ...List<dynamic>.from(d['categories']).map((c) {
+        // Stats header
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: const BorderRadius.vertical(top: Radius.circular(10))),
+          child: Row(children: [
+            Icon(dirIcon, size: 18, color: dirColor),
+            const SizedBox(width: 8),
+            Text(
+              direction == 'increase' ? 'Raise rates' : direction == 'decrease' ? 'Lower rates' : 'Hold rates',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: dirColor),
+            ),
+            const Spacer(),
+            Wrap(spacing: 14, children: [
+              _statPill('${d['total_bookings_30d'] ?? 0}', '30d bookings'),
+              _statPill('${d['last_minute_pct'] ?? 0}%', 'last-min'),
+              _statPill('${d['avg_lead_days'] ?? 0}d', 'lead'),
+            ]),
+          ]),
+        ),
+        if (categories.isNotEmpty) ...[
+          const Padding(
+            padding: EdgeInsets.fromLTRB(12, 10, 12, 4),
+            child: Text('Suggested rates', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+          ),
+          ...categories.map((c) {
             final cat = Map<String, dynamic>.from(c as Map);
             final name = (cat['room_category_name'] ?? '').toString();
-            final current = cat['current_price']?.toString() ?? '0';
-            final suggested = cat['suggested_price']?.toString() ?? '0';
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
+            final current = (cat['current_price'] as num?)?.toStringAsFixed(0) ?? '0';
+            final suggested = (cat['suggested_price'] as num?)?.toStringAsFixed(0) ?? '0';
+            final catDir = (cat['direction'] ?? 'hold').toString();
+            final catColor = catDir == 'increase' ? AppColors.success : catDir == 'decrease' ? const Color(0xFFEF4444) : AppColors.textSecondary;
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(border: Border(top: BorderSide(color: AppColors.border.withOpacity(0.5)))),
               child: Row(children: [
-                Expanded(child: Text(name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600))),
-                Text('₹$current → ₹$suggested', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                Expanded(child: Text(name.isNotEmpty ? name : 'Room', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
+                Text('₹$current', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(width: 6),
+                Icon(catDir == 'increase' ? Icons.arrow_upward : catDir == 'decrease' ? Icons.arrow_downward : Icons.remove, size: 14, color: catColor),
+                const SizedBox(width: 4),
+                Text('₹$suggested', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: catColor)),
               ]),
             );
-          }),
-        ],
+          }).toList(),
+          const SizedBox(height: 4),
+        ] else
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text('No room categories configured.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          ),
       ]),
     );
   }
@@ -601,18 +625,34 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
     setState(() => _loadingCats = true);
     try {
       final uid = await ApiService.instance.getUserId();
+      // Use roomCategories endpoint; handle multiple possible response shapes
       final res = await ApiService.instance.getData(AppConfig.roomCategories, query: {'user_id': uid});
       final raw = res.data;
-      // Try multiple possible response keys
       List<dynamic> list = [];
       if (raw is Map) {
         list = (raw['categories'] as List?) ??
             (raw['room_categories'] as List?) ??
             (raw['data'] as List?) ??
-            (raw['rooms'] as List?) ??
             [];
       } else if (raw is List) {
         list = raw;
+      }
+      // If roomCategories returned nothing, fall back to inventory endpoint for today
+      if (list.isEmpty) {
+        final today = DateTime.now();
+        final dateStr = '${today.year}-${today.month.toString().padLeft(2,"0")}-${today.day.toString().padLeft(2,"0")}';
+        final inv = await ApiService.instance.getData(AppConfig.inventory, query: {
+          'user_id': uid, 'start_date': dateStr, 'end_date': dateStr,
+        });
+        final updates = (inv.data['updates'] as List?) ?? [];
+        if (updates.isNotEmpty) {
+          final rooms = (updates.first['rooms'] as List?) ?? [];
+          // Build synthetic category list from room codes
+          list = rooms.map((r) => {
+            'id': (r['roomCode'] ?? '').toString(),
+            'category_name': (r['roomCode'] ?? '').toString(),
+          }).toList();
+        }
       }
       if (!mounted) return;
       setState(() {
@@ -622,7 +662,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
         }
       });
     } catch (e) {
-      // silently fail — user will see "No categories found"
+      // silently fail — user sees "No categories found" + Retry button
     } finally {
       if (mounted) setState(() => _loadingCats = false);
     }
