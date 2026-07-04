@@ -378,6 +378,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                   const Spacer(),
+              Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AiAssistantScreen())),
+                    icon: const Icon(Icons.smart_toy_outlined, color: AppColors.primary, size: 24),
+                    tooltip: 'AI Assistant',
+                  ),
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: ValueListenableBuilder<int>(
@@ -422,6 +430,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       },
                     ),
                   ),
+                ],
+              ),
                 ],
               ),
             ),
@@ -815,19 +825,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               controller: scrollCtrl,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
-                // ── AI Assistant Section ──
-                if (_canAccess('mobile_dashboard')) ...[
-                  _menuSection('Assistant'),
-                  _menuGrid([
-                    _menuItem(Icons.smart_toy_outlined, 'AI\nAssistant', const Color(0xFF6C5CE7), () {
-                      Navigator.pop(context);
-                      Navigator.push(context, MaterialPageRoute(
-                          builder: (_) => const AiAssistantScreen()));
-                    }),
-                  ]),
-                  const SizedBox(height: 16),
-                ],
-
                 // ── Inventory Section ──
                 if (_canAccess('mobile_inventory') ||
                     _canAccess('mobile_bulk_update') ||

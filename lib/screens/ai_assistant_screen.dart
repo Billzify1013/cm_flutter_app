@@ -626,7 +626,7 @@ class _ActionFormSheetState extends State<_ActionFormSheet> {
     try {
       final uid = await ApiService.instance.getUserId();
       // Use roomCategories endpoint; handle multiple possible response shapes
-      final res = await ApiService.instance.getData(AppConfig.roomCategories, query: {'user_id': uid});
+      final res = await ApiService.instance.postData(AppConfig.roomCategories, {'user_id': uid});
       final raw = res.data;
       List<dynamic> list = [];
       if (raw is Map) {
