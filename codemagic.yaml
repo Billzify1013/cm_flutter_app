@@ -6,7 +6,7 @@ workflows:
     integrations:
       app_store_connect: CodeMagic Integration
     environment:
-      flutter: stable
+      flutter: 3.38.1
       xcode: latest
       cocoapods: default
       ios_signing:
@@ -18,9 +18,17 @@ workflows:
       - name: Get Flutter packages
         script: |
           flutter pub get
+      - name: Force iOS 15.5 deployment target
+        script: |
+          cd ios
+          sed -i '' "s/# platform :ios.*/platform :ios, '15.5'/" Podfile
+          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '15.5'/" Podfile
+          sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 15.5;/g' Runner.xcodeproj/project.pbxproj
+          rm -f Podfile.lock
+          cd ..
       - name: Install CocoaPods dependencies
         script: |
-          cd ios && pod install
+          cd ios && pod install --repo-update
       - name: Set up code signing settings on Xcode project
         script: |
           xcode-project use-profiles
