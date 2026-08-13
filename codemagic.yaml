@@ -21,10 +21,12 @@ workflows:
       - name: Force iOS 15.5 deployment target
         script: |
           cd ios
-          sed -i '' "s/# platform :ios.*/platform :ios, '15.5'/" Podfile
-          sed -i '' "s/platform :ios, '[0-9.]*'/platform :ios, '15.5'/" Podfile
+          sed -i '' "/^[[:space:]]*#[[:space:]]*platform :ios/d" Podfile
+          sed -i '' "s/^[[:space:]]*platform :ios, '[0-9.]*'/platform :ios, '15.5'/" Podfile
           sed -i '' 's/IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;/IPHONEOS_DEPLOYMENT_TARGET = 15.5;/g' Runner.xcodeproj/project.pbxproj
           rm -f Podfile.lock
+          echo "=== Podfile top ==="
+          head -5 Podfile
           cd ..
       - name: Install CocoaPods dependencies
         script: |
