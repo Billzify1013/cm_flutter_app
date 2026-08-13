@@ -602,6 +602,25 @@ class _S extends State<BookingDetailScreen> {
                                 style: TextStyle(fontSize: 12, color: AppColors.primary))),
                         const SizedBox(height: 12),
                       ],
+                      _GstSearchBox(
+                        states: states,
+                        onPicked: (d) {
+                          gstCtrl.text = d['gstnumber']?.toString() ?? '';
+                          coCtrl.text = d['company']?.toString() ?? '';
+                          addrCtrl.text = d['address']?.toString() ?? '';
+                          final st = (d['state'] ?? '').toString();
+                          String resolved = '';
+                          if (st.contains('|') && states.contains(st)) {
+                            resolved = st;
+                          } else {
+                            final code = (d['state_code'] ?? '').toString();
+                            resolved = states.firstWhere(
+                                    (s) => s.startsWith('$code|'), orElse: () => '');
+                          }
+                          set(() => state = resolved);
+                        },
+                      ),
+                      const SizedBox(height: 16),
                       Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                         const Text('GST Number', style: TextStyle(
                             fontSize: 12, color: AppColors.textSecondary)),
@@ -763,6 +782,25 @@ class _S extends State<BookingDetailScreen> {
                         const SizedBox(height: 16),
 
                         if (isB2B) ...[
+                          _GstSearchBox(
+                            states: states,
+                            onPicked: (d) {
+                              gstCtrl.text = d['gstnumber']?.toString() ?? '';
+                              coCtrl.text = d['company']?.toString() ?? '';
+                              addrCtrl.text = d['address']?.toString() ?? '';
+                              final st = (d['state'] ?? '').toString();
+                              String resolved = '';
+                              if (st.contains('|') && states.contains(st)) {
+                                resolved = st;
+                              } else {
+                                final code = (d['state_code'] ?? '').toString();
+                                resolved = states.firstWhere(
+                                        (s) => s.startsWith('$code|'), orElse: () => '');
+                              }
+                              set(() => state = resolved);
+                            },
+                          ),
+                          const SizedBox(height: 16),
                           // GST number with auto state
                           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                             const Text('GST Number', style: TextStyle(
@@ -1784,5 +1822,298 @@ class _S extends State<BookingDetailScreen> {
       case 'create booking': return 'Booking Created';
       default: return a;
     }
+  }
+}
+
+
+// ===================================================================
+//  GST Company Search + Fetch box
+//  Pehle saved companies me search (free), na mile to API se fetch
+// ===================================================================
+class _GstSearchBox extends StatefulWidget {
+  final List<String> states;
+  final ValueChanged<Map<String, dynamic>> onPicked;
+
+  const _GstSearchBox({
+    required this.states,
+    required this.onPicked,
+  });
+
+  @override
+  State<_GstSearchBox> createState() => _GstSearchBoxState();
+}
+
+class _GstSearchBoxState extends State<_GstSearchBox> {
+  final _searchCtrl = TextEditingController();
+  final _fetchCtrl = TextEditingController();
+
+  bool _searching = false;
+  bool _fetching = false;
+  bool _showFetch = false;
+  String _msg = '';
+  bool _msgError = false;
+  List<Map<String, dynamic>> _results = [];
+
+  static final _gstPattern =
+  RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$');
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _fetchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _search() async {
+    final q = _searchCtrl.text.trim();
+
+    setState(() {
+      _results = [];
+      _msg = '';
+      _showFetch = false;
+    });
+
+    if (q.length < 2) {
+      setState(() { _msg = 'Type at least 2 characters'; _msgError = true; });
+      return;
+    }
+
+    setState(() => _searching = true);
+
+    try {
+      final uid = await ApiService.instance.getUserId();
+      final res = await ApiService.instance.postData(
+          AppConfig.searchCompany, {'user_id': uid, 'q': q});
+
+      final list = (res.data['results'] as List?) ?? [];
+
+      if (list.isEmpty) {
+        setState(() {
+          _msg = 'No saved company found. Enter GST number below to fetch.';
+          _msgError = false;
+          _showFetch = true;
+          if (_gstPattern.hasMatch(q.toUpperCase())) {
+            _fetchCtrl.text = q.toUpperCase();
+          }
+        });
+      } else {
+        setState(() {
+          _results = List<Map<String, dynamic>>.from(
+              list.map((e) => Map<String, dynamic>.from(e as Map)));
+        });
+      }
+    } catch (e) {
+      setState(() { _msg = friendlyError(e); _msgError = true; });
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
+  }
+
+  Future<void> _fetch() async {
+    final gst = _fetchCtrl.text.trim().toUpperCase();
+
+    setState(() => _msg = '');
+
+    if (!_gstPattern.hasMatch(gst)) {
+      setState(() {
+        _msg = 'Invalid GSTIN format. Must be 15 characters like 22AAAAA0000A1Z5';
+        _msgError = true;
+      });
+      return;
+    }
+
+    setState(() => _fetching = true);
+
+    try {
+      final uid = await ApiService.instance.getUserId();
+      final res = await ApiService.instance.postData(
+          AppConfig.fetchGstin, {'user_id': uid, 'gstin': gst});
+
+      final d = Map<String, dynamic>.from(res.data['data'] as Map);
+      widget.onPicked(d);
+
+      final cached = res.data['cached'] == true;
+      var note = cached
+          ? 'Loaded from saved data.'
+          : 'Details fetched and saved to your company list.';
+
+      final st = (d['status'] ?? '').toString();
+      if (st.isNotEmpty && st != 'Active') {
+        note += '\nWarning: GSTIN status is $st';
+      }
+
+      setState(() {
+        _msg = note;
+        _msgError = false;
+        _showFetch = false;
+        _results = [];
+      });
+    } catch (e) {
+      String err;
+      if (e is DioException) {
+        err = e.response?.data?['error']?.toString() ?? friendlyError(e);
+      } else {
+        err = friendlyError(e);
+      }
+      setState(() { _msg = err; _msgError = true; });
+    } finally {
+      if (mounted) setState(() => _fetching = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Search saved company',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary)),
+        const SizedBox(height: 8),
+
+        Row(mainAxisSize: MainAxisSize.max, children: [
+          Expanded(child: TextField(
+            controller: _searchCtrl,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _search(),
+            decoration: const InputDecoration(
+              isDense: true,
+              hintText: 'Company name or GST number',
+              hintStyle: TextStyle(fontSize: 13),
+            ),
+          )),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 42,
+            width: 90,
+            child: ElevatedButton(
+              onPressed: _searching ? null : _search,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12))),
+              child: _searching
+                  ? const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+                  : const Text('Search',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ]),
+
+        if (_results.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          ..._results.map((r) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Material(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () {
+                  widget.onPicked(r);
+                  setState(() {
+                    _results = [];
+                    _msg = 'Details filled. Tap Save to apply.';
+                    _msgError = false;
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppColors.border)),
+                  child: Row(children: [
+                    Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(r['company']?.toString() ?? '-',
+                              style: const TextStyle(fontSize: 13,
+                                  fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 2),
+                          Text(
+                              '${r['gstnumber']}'
+                                  '${(r['city']?.toString() ?? '').isNotEmpty ? ' • ${r['city']}' : ''}',
+                              style: const TextStyle(fontSize: 11,
+                                  color: AppColors.textSecondary)),
+                        ])),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                          color: r['verified'] == true
+                              ? AppColors.successSoft
+                              : AppColors.background,
+                          borderRadius: BorderRadius.circular(20)),
+                      child: Text(
+                          r['verified'] == true ? 'Verified' : 'Pre-saved',
+                          style: TextStyle(fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: r['verified'] == true
+                                  ? AppColors.success
+                                  : AppColors.textSecondary)),
+                    ),
+                  ]),
+                ),
+              ),
+            ),
+          )),
+        ],
+
+        if (_msg.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(_msg, style: TextStyle(fontSize: 11,
+              color: _msgError
+                  ? const Color(0xFFC0392B)
+                  : AppColors.success)),
+        ],
+
+        if (_showFetch) ...[
+          const SizedBox(height: 10),
+          Row(mainAxisSize: MainAxisSize.max, children: [
+            Expanded(child: TextField(
+              controller: _fetchCtrl,
+              textCapitalization: TextCapitalization.characters,
+              maxLength: 15,
+              decoration: const InputDecoration(
+                isDense: true,
+                counterText: '',
+                hintText: 'Enter GST number',
+                hintStyle: TextStyle(fontSize: 13),
+              ),
+            )),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 42,
+              width: 90,
+              child: ElevatedButton(
+                onPressed: _fetching ? null : _fetch,
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.zero,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                child: _fetching
+                    ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                    : const Text('Fetch',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ]),
+        ],
+      ]),
+    );
   }
 }

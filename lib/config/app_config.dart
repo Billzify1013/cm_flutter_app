@@ -49,6 +49,8 @@ class AppConfig {
   static const String createInvoice = '/api_create_invoice/';
   static const String cancelInvoice  = '/api_cancel_invoice/';
   static const String updateInvoiceGst = '/api_update_invoice_gst/';
+  static const String searchCompany = '/api_search_company/';
+  static const String fetchGstin = '/api_fetch_gstin/';
   static const String editBill = '/api_edit_bill/';
   static const String saveFcmToken = '/api_save_fcm_token/';
   static const String salesReport    = '/api_sales_report/';
