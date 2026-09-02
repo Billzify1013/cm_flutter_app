@@ -18,6 +18,10 @@ class _StayViewScreenState extends State<StayViewScreen> {
   bool _netError = false;
   DateTime _startDate = DateTime.now();
 
+  int? _dragCatId;
+  int? _dragFromRoomId;
+  bool _moving = false;
+
   List<String> _dates = [];
   String _today = '';
   List<dynamic> _categories = [];
@@ -339,41 +343,62 @@ class _StayViewScreenState extends State<StayViewScreen> {
               fontSize: 9, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
         ]),
       ),
-      for (final r in rooms) _buildRoomRow(r),
+      for (final r in rooms) _buildRoomRow(r, (cat['category_id'] as num?)?.toInt() ?? 0),
     ]);
   }
 
-  Widget _buildRoomRow(dynamic room) {
+  Widget _buildRoomRow(dynamic room, int catId) {
     final rn = (room['room_number'] ?? '-').toString();
+    final roomId = (room['room_id'] as num?)?.toInt() ?? 0;
     final bks = room['bookings'] as List? ?? [];
-    return Container(
-      height: 56,
-      decoration: const BoxDecoration(
-          border: Border(bottom: BorderSide(color: AppColors.border, width: 0.5))),
-      child: Row(children: [
-        Container(width: 70,
-            decoration: const BoxDecoration(
-                border: Border(right: BorderSide(color: AppColors.border, width: 1.5))),
-            child: Center(child: Text(rn, style: const TextStyle(
-                fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)))),
-        Expanded(child: LayoutBuilder(builder: (ctx, c) {
-          final tw = c.maxWidth;
-          return Stack(children: [
-            Row(children: List.generate(_dates.length, (i) {
-              final isT = _dates[i] == _today;
-              return Expanded(child: Container(decoration: BoxDecoration(
-                  color: isT ? const Color(0xFFF7F5FF) : Colors.transparent,
-                  border: Border(left: BorderSide(
-                      color: AppColors.border.withOpacity(0.4), width: 0.5)))));
+    final canDrop = _dragCatId == catId && _dragFromRoomId != roomId;
+
+    return DragTarget<Map<String, dynamic>>(
+      onWillAcceptWithDetails: (_) => canDrop,
+      onAcceptWithDetails: (d) => _doMoveRoom(d.data, roomId, rn),
+      builder: (ctx, cand, rej) {
+        final hover = cand.isNotEmpty;
+        return Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: hover
+                ? AppColors.accentSoft
+                : canDrop
+                ? AppColors.accentSoft.withOpacity(0.3)
+                : null,
+            border: Border(
+              bottom: const BorderSide(color: AppColors.border, width: 0.5),
+              left: canDrop
+                  ? const BorderSide(color: AppColors.primary, width: 2)
+                  : BorderSide.none,
+            ),
+          ),
+          child: Row(children: [
+            Container(width: 70,
+                decoration: const BoxDecoration(
+                    border: Border(right: BorderSide(color: AppColors.border, width: 1.5))),
+                child: Center(child: Text(rn, style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w700, color: AppColors.textPrimary)))),
+            Expanded(child: LayoutBuilder(builder: (ctx, c) {
+              final tw = c.maxWidth;
+              return Stack(children: [
+                Row(children: List.generate(_dates.length, (i) {
+                  final isT = _dates[i] == _today;
+                  return Expanded(child: Container(decoration: BoxDecoration(
+                      color: isT ? const Color(0xFFF7F5FF) : Colors.transparent,
+                      border: Border(left: BorderSide(
+                          color: AppColors.border.withOpacity(0.4), width: 0.5)))));
+                })),
+                for (final bk in bks) _buildBar(bk, tw, catId, roomId),
+              ]);
             })),
-            for (final bk in bks) _buildBar(bk, tw),
-          ]);
-        })),
-      ]),
+          ]),
+        );
+      },
     );
   }
 
-  Widget _buildBar(dynamic bk, double tw) {
+  Widget _buildBar(dynamic bk, double tw, int catId, int roomId) {
     final lp = (bk['left_pct'] as num?)?.toDouble() ?? 0;
     final wp = (bk['width_pct'] as num?)?.toDouble() ?? 0;
     final st = (bk['status'] ?? 'booked').toString();
@@ -387,32 +412,62 @@ class _StayViewScreenState extends State<StayViewScreen> {
     else if (st == 'checkout') bg = const Color(0xFFB7F9EC);
     else bg = const Color(0xFFEAE4F5);
 
-    return Positioned(left: l, top: 8, child: GestureDetector(
-      onTap: () => _showBookingDetail(bk),
-      child: Container(
-        width: w.clamp(4.0, (tw - l).clamp(4.0, tw)), height: 40,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        decoration: BoxDecoration(color: bg,
-            borderRadius: BorderRadius.horizontal(
-                left: cl ? Radius.zero : const Radius.circular(6),
-                right: cr ? Radius.zero : const Radius.circular(6)),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06),
-                blurRadius: 4, offset: const Offset(0, 1))]),
-        child: Row(children: [
-          Expanded(child: Text(gn, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: AppColors.textPrimary))),
-          if (w > 80 && ch.isNotEmpty)
-            Container(margin: const EdgeInsets.only(left: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                decoration: BoxDecoration(color: Colors.white.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(3)),
-                child: Text(ch.length > 6 ? '${ch.substring(0, 6)}..' : ch,
-                    style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w600,
-                        color: AppColors.textSecondary))),
-        ]),
-      ),
-    ));
+    final bw = w.clamp(4.0, (tw - l).clamp(4.0, tw));
+
+    final card = Container(
+      width: bw, height: 40,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(color: bg,
+          borderRadius: BorderRadius.horizontal(
+              left: cl ? Radius.zero : const Radius.circular(6),
+              right: cr ? Radius.zero : const Radius.circular(6)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06),
+              blurRadius: 4, offset: const Offset(0, 1))]),
+      child: Row(children: [
+        Expanded(child: Text(gn, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+                color: AppColors.textPrimary))),
+        if (bw > 80 && ch.isNotEmpty)
+          Container(margin: const EdgeInsets.only(left: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(3)),
+              child: Text(ch.length > 6 ? '${ch.substring(0, 6)}..' : ch,
+                  style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary))),
+      ]),
+    );
+
+    Widget bar = GestureDetector(
+        onTap: () => _showBookingDetail(bk), child: card);
+
+    if (st != 'checkout') {
+      bar = LongPressDraggable<Map<String, dynamic>>(
+        data: {
+          'booking_id': (bk['booking_id'] ?? '').toString(),
+          'entry_id': (bk['entry_id'] ?? '').toString(),
+          'guest_name': gn,
+        },
+        onDragStarted: () => setState(() {
+          _dragCatId = catId; _dragFromRoomId = roomId;
+        }),
+        onDragEnd: (_) => setState(() {
+          _dragCatId = null; _dragFromRoomId = null;
+        }),
+        onDraggableCanceled: (_, __) => setState(() {
+          _dragCatId = null; _dragFromRoomId = null;
+        }),
+        feedback: Material(
+          color: Colors.transparent,
+          child: Opacity(opacity: 0.9,
+              child: SizedBox(width: bw.clamp(80.0, 200.0), child: card)),
+        ),
+        childWhenDragging: Opacity(opacity: 0.25, child: card),
+        child: bar,
+      );
+    }
+
+    return Positioned(left: l, top: 8, child: bar);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -485,6 +540,11 @@ class _StayViewScreenState extends State<StayViewScreen> {
             _aBtn('Check-In', Icons.login_rounded, const Color(0xFFD63031), () {
               Navigator.pop(context);
               _showCheckinDialog(bookingId, entryId, categoryId, checkin, checkout);
+            }),
+            const SizedBox(height: 8),
+            _aBtn('Change Room', Icons.swap_horiz_rounded, const Color(0xFF4F8DF5), () {
+              Navigator.pop(context);
+              _showChangeRoomDialog(bookingId, entryId, categoryId, checkin, checkout);
             }),
             const SizedBox(height: 8),
             _aBtn('Registration', Icons.assignment_outlined, AppColors.primary, () {
@@ -686,6 +746,19 @@ class _StayViewScreenState extends State<StayViewScreen> {
 
   Future<void> _doUndoCheckin(String bid, String eid) => _api(AppConfig.pmsUndoCheckin,
       {'booking_id': bid, 'room_book_id': eid}, 'Check-in undone');
+
+  Future<void> _doMoveRoom(
+      Map<String, dynamic> data, int newRoomId, String roomNo) async {
+    if (_moving) return;
+    _moving = true;
+    setState(() { _dragCatId = null; _dragFromRoomId = null; });
+    await _api(AppConfig.pmsChangeRoom, {
+      'booking_id': data['booking_id'],
+      'room_book_id': data['entry_id'],
+      'new_room_id': newRoomId.toString(),
+    }, 'Moved ${data['guest_name']} to room $roomNo');
+    _moving = false;
+  }
 
   Future<void> _doUndoCheckout(String bid, String eid) => _api(AppConfig.pmsUndoCheckout,
       {'booking_id': bid, 'room_book_id': eid}, 'Check-out undone');
