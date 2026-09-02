@@ -88,5 +88,5 @@ class AppConfig {
   static const String aiExportPdf = '/api/ai-assistant/export-pdf/';
   static const String aiRunAction = '/api/ai-assistant/run-action/';
   static const String aiAskAnything = '/api/ai-assistant/ask/';
-  static const availableRooms = 'api_available_rooms/';
+  static const availableRooms = '/api_available_rooms/';
 }

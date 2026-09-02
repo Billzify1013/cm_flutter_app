@@ -33,6 +33,9 @@ Future<List<Map<String, dynamic>>> _loadAvailableRooms(
     int catId, String checkin, String checkout) async {
   try {
     final uid = await ApiService.instance.getUserId();
+    debugPrint('ROOMS → url=${AppConfig.availableRooms} '
+        'uid=$uid cat=$catId $checkin..$checkout');
+
     final res = await ApiService.instance.postData(
       AppConfig.availableRooms,
       {
@@ -42,9 +45,13 @@ Future<List<Map<String, dynamic>>> _loadAvailableRooms(
         'checkout': checkout,
       },
     );
+
+    debugPrint('ROOMS ← ${res.data}');
+
     final list = (res.data['rooms'] as List?) ?? [];
     return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-  } catch (_) {
+  } catch (e) {
+    debugPrint('ROOMS ✖ $e');
     return [];
   }
 }

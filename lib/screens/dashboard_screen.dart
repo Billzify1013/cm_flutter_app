@@ -380,12 +380,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const Spacer(),
               Row(
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const AiAssistantScreen())),
-                    icon: const Icon(Icons.smart_toy_outlined, color: AppColors.primary, size: 24),
-                    tooltip: 'AI Assistant',
-                  ),
+                  // IconButton(
+                  //   onPressed: () => Navigator.of(context).push(
+                  //       MaterialPageRoute(builder: (_) => const AiAssistantScreen())),
+                  //   icon: const Icon(Icons.smart_toy_outlined, color: AppColors.primary, size: 24),
+                  //   tooltip: 'AI Assistant',
+                  // ),
                   Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: ValueListenableBuilder<int>(
