@@ -27,6 +27,29 @@ Map<String, double> calcGst(double settle, int qty, int nights) {
 }
 
 // ─────────────────────────────────────────────
+// Available rooms loader (shared by both cards)
+// ─────────────────────────────────────────────
+Future<List<Map<String, dynamic>>> _loadAvailableRooms(
+    int catId, String checkin, String checkout) async {
+  try {
+    final uid = await ApiService.instance.getUserId();
+    final res = await ApiService.instance.postData(
+      AppConfig.availableRooms,
+      {
+        'user_id': uid,
+        'cat_id': catId,
+        'checkin': checkin,
+        'checkout': checkout,
+      },
+    );
+    final list = (res.data['rooms'] as List?) ?? [];
+    return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  } catch (_) {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────
 // Callback — includes rooms payload
 // ─────────────────────────────────────────────
 typedef TotalsCallback = void Function(
@@ -47,6 +70,8 @@ class _NonOccCard extends StatefulWidget {
   final double sysPrice;
   final int nights;
   final String? planName;
+  final String checkin;
+  final String checkout;
   final TotalsCallback onChanged;
   const _NonOccCard({
     super.key,
@@ -56,17 +81,29 @@ class _NonOccCard extends StatefulWidget {
     required this.sysPrice,
     required this.nights,
     required this.planName,
+    required this.checkin,
+    required this.checkout,
     required this.onChanged,
   });
   @override
   State<_NonOccCard> createState() => _NonOccCardState();
 }
 
-class _NonOccCardState extends State<_NonOccCard> {
+class _NonOccCardState extends State<_NonOccCard>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps qty / amount alive while the card is scrolled off screen
+  @override
+  bool get wantKeepAlive => true;
+
   int qty = 0;
   double settle = 0, base = 0, gst = 0, lastSys = 0;
   bool edited = false;
   late final TextEditingController ctrl;
+
+  // room picker
+  List<Map<String, dynamic>> _avail = [];
+  final Set<int> _picked = {};
+  bool _fetched = false;
 
   @override
   void initState() {
@@ -82,17 +119,50 @@ class _NonOccCardState extends State<_NonOccCard> {
 
   String f(double v) => v.toStringAsFixed(2);
 
+  Future<void> _fetchRooms() async {
+    if (_fetched) return;
+    _fetched = true;
+    final rooms =
+    await _loadAvailableRooms(widget.catId, widget.checkin, widget.checkout);
+    if (!mounted) return;
+    setState(() => _avail = rooms);
+  }
+
+  void _trimPicked() {
+    while (_picked.length > qty) {
+      _picked.remove(_picked.last);
+    }
+  }
+
+  void _toggleRoom(int id) {
+    if (_picked.contains(id)) {
+      _picked.remove(id);
+    } else {
+      if (_picked.length >= qty) return;
+      _picked.add(id);
+    }
+    setState(() {});
+    _push();
+  }
+
   void _push() {
     final payload = <Map<String, dynamic>>[];
     if (qty > 0 && settle > 0) {
-      payload.add({
+      final m = <String, dynamic>{
         'cat_id': widget.catId,
         'qty': qty,
         'settle_total': f(settle),
         'base': f(base),
         'gst': f(gst),
         'rate_plan': widget.planName ?? '',
-      });
+      };
+      // Rooms are optional: send them only when the picked count matches qty
+      if (_picked.isNotEmpty && _picked.length == qty) {
+        m['room_ids'] = _picked.toList();
+      } else if (_picked.isNotEmpty) {
+        m['_room_incomplete'] = widget.catName;
+      }
+      payload.add(m);
     }
     widget.onChanged(widget.catId, settle, base, gst, qty, payload);
   }
@@ -100,17 +170,21 @@ class _NonOccCardState extends State<_NonOccCard> {
   void _recalc() {
     if (qty <= 0) {
       settle = 0; base = 0; gst = 0;
+      _picked.clear();
       _push(); return;
     }
     final sys = widget.sysPrice * qty * widget.nights;
     if (!edited) { settle = sys; lastSys = sys; ctrl.text = f(sys); }
     final g = calcGst(settle, qty, widget.nights);
     base = g['base']!; gst = g['gst']!;
+    _trimPicked();
+    _fetchRooms();
     _push();
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -142,6 +216,16 @@ class _NonOccCardState extends State<_NonOccCard> {
             const SizedBox(width: 8),
             _pill('GST ₹${f(gst)}', AppColors.warningSoft, AppColors.warning),
           ]),
+          if (_avail.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _roomPicker(
+              count: _picked.length,
+              need: qty,
+              rooms: _avail,
+              isSelected: (id) => _picked.contains(id),
+              onTap: _toggleRoom,
+            ),
+          ],
         ],
       ]),
     );
@@ -158,6 +242,8 @@ class _OccCard extends StatefulWidget {
   final double sysPrice;
   final int nights;
   final Map<String, List<Map<String, dynamic>>> plans;
+  final String checkin;
+  final String checkout;
   final TotalsCallback onChanged;
   const _OccCard({
     super.key,
@@ -167,6 +253,8 @@ class _OccCard extends StatefulWidget {
     required this.sysPrice,
     required this.nights,
     required this.plans,
+    required this.checkin,
+    required this.checkout,
     required this.onChanged,
   });
   @override
@@ -176,15 +264,25 @@ class _OccCard extends StatefulWidget {
 class _OccRoom {
   String? plan;
   int? persons;
+  int? roomId;
   double settle = 0, pn = 0, base = 0, gst = 0, lastSys = 0;
   bool edited = false;
   late final TextEditingController ctrl;
   _OccRoom() { ctrl = TextEditingController(text: '0.00'); }
 }
 
-class _OccCardState extends State<_OccCard> {
+class _OccCardState extends State<_OccCard>
+    with AutomaticKeepAliveClientMixin {
+  // Keeps rows / amounts alive while the card is scrolled off screen
+  @override
+  bool get wantKeepAlive => true;
+
   int qty = 0;
   final List<_OccRoom> rooms = [];
+
+  // room picker
+  List<Map<String, dynamic>> _avail = [];
+  bool _fetched = false;
 
   @override
   void dispose() {
@@ -193,6 +291,15 @@ class _OccCardState extends State<_OccCard> {
   }
 
   String f(double v) => v.toStringAsFixed(2);
+
+  Future<void> _fetchRooms() async {
+    if (_fetched) return;
+    _fetched = true;
+    final list =
+    await _loadAvailableRooms(widget.catId, widget.checkin, widget.checkout);
+    if (!mounted) return;
+    setState(() => _avail = list);
+  }
 
   double _planPrice(String plan, int persons) {
     final tiers = widget.plans[plan];
@@ -221,6 +328,7 @@ class _OccCardState extends State<_OccCard> {
   void _setQty(int q) {
     if (q > qty) {
       for (int i = qty; i < q; i++) rooms.add(_OccRoom());
+      _fetchRooms();
     } else {
       for (int i = qty; i > q; i--) {
         rooms.last.ctrl.dispose();
@@ -228,6 +336,18 @@ class _OccCardState extends State<_OccCard> {
       }
     }
     qty = q;
+    _push();
+  }
+
+  // rooms not already chosen by another row
+  List<Map<String, dynamic>> _freeRoomsFor(int idx) {
+    final taken = <int>{};
+    for (int i = 0; i < rooms.length; i++) {
+      if (i != idx && rooms[i].roomId != null) taken.add(rooms[i].roomId!);
+    }
+    return _avail
+        .where((r) => !taken.contains((r['id'] as num).toInt()))
+        .toList();
   }
 
   void _recalcRoom(int idx) {
@@ -252,7 +372,7 @@ class _OccCardState extends State<_OccCard> {
       ts += r.settle; tb += r.base; tg += r.gst;
       if (r.persons != null) tq += r.persons!;
       if (r.settle > 0) {
-        payload.add({
+        final m = <String, dynamic>{
           'cat_id': widget.catId,
           'rate_plan': r.plan ?? '',
           'guests': r.persons ?? 1,
@@ -260,7 +380,10 @@ class _OccCardState extends State<_OccCard> {
           'base': f(r.base),
           'gst': f(r.gst),
           'per_night': f(r.pn),
-        });
+        };
+        // Room is optional — send it only when the user picked one
+        if (r.roomId != null) m['room_id'] = r.roomId;
+        payload.add(m);
       }
     }
     widget.onChanged(widget.catId, ts, tb, tg, tq, payload);
@@ -268,6 +391,7 @@ class _OccCardState extends State<_OccCard> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final planNames = widget.plans.keys.toList();
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -286,6 +410,7 @@ class _OccCardState extends State<_OccCard> {
         ...List.generate(qty, (i) {
           final r = rooms[i];
           final persons = r.plan != null ? _persons(r.plan!) : <int>[];
+          final freeRooms = _freeRoomsFor(i);
           return Container(
             margin: const EdgeInsets.only(top: 10),
             padding: const EdgeInsets.all(10),
@@ -312,6 +437,13 @@ class _OccCardState extends State<_OccCard> {
                       r.persons = int.tryParse(v ?? ''); r.edited = false; _recalcRoom(i);
                     }))),
               ]),
+              if (_avail.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                _roomNumberDrop(freeRooms, r.roomId, (v) => setState(() {
+                  r.roomId = v;
+                  _push();
+                })),
+              ],
               if (r.plan != null && r.persons != null) ...[
                 const SizedBox(height: 8),
                 Row(children: [
@@ -420,6 +552,122 @@ Widget _miniDrop(
       ),
     ]);
 
+// Room number dropdown — occupancy rows
+Widget _roomNumberDrop(List<Map<String, dynamic>> rooms, int? val,
+    ValueChanged<int?> cb) =>
+    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Room number (optional)',
+          style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      const SizedBox(height: 4),
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: AppColors.card,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: DropdownButtonHideUnderline(child: DropdownButton<int>(
+          value: val,
+          isExpanded: true,
+          hint: const Text('Assign later',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          icon: const Icon(Icons.keyboard_arrow_down,
+              color: AppColors.textSecondary, size: 18),
+          style: const TextStyle(color: AppColors.textPrimary, fontSize: 13),
+          items: [
+            const DropdownMenuItem<int>(
+                value: null,
+                child: Text('Assign later',
+                    style: TextStyle(
+                        color: AppColors.textSecondary, fontSize: 13))),
+            ...rooms.map((r) {
+              final id = (r['id'] as num).toInt();
+              final floor = (r['floor'] ?? '').toString();
+              return DropdownMenuItem<int>(
+                value: id,
+                child: Text(floor.isEmpty
+                    ? 'Room ${r['room_number']}'
+                    : 'Room ${r['room_number']} · Floor $floor'),
+              );
+            }),
+          ],
+          onChanged: cb,
+        )),
+      ),
+    ]);
+
+// Room chips — non-occupancy card
+Widget _roomPicker({
+  required int count,
+  required int need,
+  required List<Map<String, dynamic>> rooms,
+  required bool Function(int) isSelected,
+  required void Function(int) onTap,
+}) {
+  final done = count == need;
+  return Container(
+    padding: const EdgeInsets.all(10),
+    decoration: BoxDecoration(
+      color: AppColors.background,
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: AppColors.border),
+    ),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        const Icon(Icons.meeting_room_outlined,
+            size: 15, color: AppColors.primary),
+        const SizedBox(width: 6),
+        const Text('Assign rooms (optional)',
+            style: TextStyle(fontSize: 12,
+                fontWeight: FontWeight.w700, color: AppColors.primary)),
+        const Spacer(),
+        _pill('$count/$need',
+            done ? AppColors.successSoft : AppColors.accentSoft,
+            done ? AppColors.success : AppColors.primary),
+      ]),
+      const SizedBox(height: 8),
+      Wrap(spacing: 6, runSpacing: 6, children: rooms.map((r) {
+        final id = (r['id'] as num).toInt();
+        final sel = isSelected(id);
+        final floor = (r['floor'] ?? '').toString();
+        return InkWell(
+          onTap: () => onTap(id),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: sel ? AppColors.primary : AppColors.card,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                  color: sel ? AppColors.primary : AppColors.border),
+            ),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              if (sel) ...[
+                const Icon(Icons.check, size: 13, color: Colors.white),
+                const SizedBox(width: 4),
+              ],
+              Text('${r['room_number']}',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: sel ? Colors.white : AppColors.textPrimary)),
+              if (floor.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Text('F$floor',
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: sel
+                            ? Colors.white70
+                            : AppColors.textSecondary)),
+              ],
+            ]),
+          ),
+        );
+      }).toList()),
+    ]),
+  );
+}
+
 // ─────────────────────────────────────────────
 // Main screen
 // ─────────────────────────────────────────────
@@ -478,6 +726,9 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
     _nights = (d['nights'] as num?)?.toInt() ?? 1;
     _planNames = List<String>.from((d['plan_names'] as List?) ?? []);
     _rooms = List<Map<String, dynamic>>.from((d['rooms'] as List?) ?? []);
+
+    // Preselect the first rate plan so the user isn't forced to pick one
+    if (_planNames.isNotEmpty) _selectedPlan = _planNames.first;
 
     _ratePlans = {};
     final rp = d['rate_plans'] as Map? ?? {};
@@ -567,6 +818,11 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
 
       for (final entry in _roomsPayload.entries) {
         for (final room in entry.value) {
+          // Rooms half-picked for a category — ask the user to finish or clear
+          if (room.containsKey('_room_incomplete')) {
+            _msg('${room['_room_incomplete']}: pick all rooms or none');
+            return;
+          }
           roomsData.add(room);
           final settle = double.tryParse(
               room['settle_total']?.toString() ?? '0') ?? 0;
@@ -738,6 +994,8 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
               sysPrice: (r['price'] as num).toDouble(),
               nights: _nights,
               plans: _ratePlans[id.toString()] ?? {},
+              checkin: _apiDate(widget.checkin),
+              checkout: _apiDate(widget.checkout),
               onChanged: _onRoomChanged,
             )
                 : _NonOccCard(
@@ -748,6 +1006,8 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
               sysPrice: (r['price'] as num).toDouble(),
               nights: _nights,
               planName: _selectedPlan,
+              checkin: _apiDate(widget.checkin),
+              checkout: _apiDate(widget.checkout),
               onChanged: _onRoomChanged,
             );
           }),
