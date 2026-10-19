@@ -545,6 +545,15 @@ class _S extends State<BookingDetailScreen> {
     if (result == true) _load();
   }
 
+  void _addProductBill() async {
+    final result = await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => PosScreen(
+          bookingId: _b['id']?.toString() ?? '',
+          guestName: _b['guest_name']?.toString() ?? '',
+        )));
+    if (result == true) _load();
+  }
+
   void _guestGst() {
     final gstCtrl  = TextEditingController(text: _data?['guest_gst']?['gstnumber'] ?? '');
     final coCtrl   = TextEditingController(text: _data?['guest_gst']?['company'] ?? '');
@@ -1124,7 +1133,7 @@ class _S extends State<BookingDetailScreen> {
                   case 'create_invoice': _createInvoice(); break;
                   case 'cancel_invoice': _cancelInvoice(); break;
                   case 'voucher': _voucher(); break;
-                  case 'product': /* ... */ break;
+                  case 'product': _addProductBill(); break;
                   case 'bill': _editBill(); break;
                   case 'gst': _isInvoiceCreated ? _invoiceGst() : _guestGst(); break;
                   case 'cancel': _cancelBooking(); break;
