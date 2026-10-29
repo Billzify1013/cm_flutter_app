@@ -28,6 +28,7 @@ class _SubuserScreenState extends State<SubuserScreen> {
     'mobile_business_report': 'Business Report',
     'mobile_hotel_profile': 'Hotel Profile',
     'mobile_no_show': 'No Show',
+    'chat': 'OTA Messages',
   };
 
   @override
@@ -282,7 +283,10 @@ class _SubuserScreenState extends State<SubuserScreen> {
             ..._pageLabels.entries.map((entry) {
               final pageKey = entry.key;
               final label = entry.value;
-              final enabled = perms[pageKey] != false;
+              // OTA Messages is OFF until the owner turns it on; other pages are ON by default
+              final enabled = pageKey == 'chat'
+                  ? perms[pageKey] == true
+                  : perms[pageKey] != false;
               return SwitchListTile(
                 dense: true,
                 title: Text(label, style: const TextStyle(fontSize: 13)),

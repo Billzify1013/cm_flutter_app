@@ -5,11 +5,14 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../core/api_service.dart';
 import '../config/app_config.dart';
+import 'chat_push.dart';
 
 @pragma('vm:entry-point')
 Future<void> firebaseBackgroundHandler(RemoteMessage message) async {
   debugPrint('BG notification: ${message.notification?.title}');
   final prefs = await SharedPreferences.getInstance();
+  // Guest chat messages have their own counter; don't add them to the booking bell
+  if (message.data['type'] == 'chat_message') return;
   final current = prefs.getInt('unread_booking_count') ?? 0;
   await prefs.setInt('unread_booking_count', current + 1);
 }
@@ -30,6 +33,9 @@ class NotificationService {
 
   // Jab naya notification aaye to ye fire hoga (dashboard refresh ke liye)
   final ValueNotifier<int> newBookingTrigger = ValueNotifier<int>(0);
+
+  // Fires when a guest chat message arrives (dashboard refreshes the chat count)
+  final ValueNotifier<int> chatTrigger = ValueNotifier<int>(0);
 
   Future<void> init() async {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
@@ -97,12 +103,26 @@ class NotificationService {
       ),
     );
 
-    await _localNotif.initialize(initSettings);
+    await _localNotif.initialize(
+      initSettings,
+      // tap on a notification shown while the app is open
+      onDidReceiveNotificationResponse: (resp) {
+        ChatPush.openPayload(resp.payload);
+      },
+    );
   }
 
   void _onForegroundMessage(RemoteMessage message) {
-    // Counter badhao (foreground me bhi)
-    _incrementUnread();
+    final isChat = ChatPush.isChat(message.data);
+    // Already reading this chat: no banner
+    if (isChat && ChatPush.isOpenNow(message.data)) return;
+
+    if (isChat) {
+      chatTrigger.value = chatTrigger.value + 1;
+    } else {
+      // Counter badhao (foreground me bhi)
+      _incrementUnread();
+    }
 
     // Backend ab 'notification' object nahi bhejta (duplicate avoid karne ke liye),
     // ab title/body 'data' map se aate hain
@@ -112,7 +132,8 @@ class NotificationService {
     if (title == null && body == null) return;
 
     _localNotif.show(
-      message.hashCode,
+      // one banner per chat: a newer message replaces the older one
+      isChat ? 100000 + (int.tryParse('${message.data['conversation_id']}') ?? 0) : message.hashCode,
       title,
       body,
       NotificationDetails(
@@ -133,7 +154,7 @@ class NotificationService {
           presentSound: true,
         ),
       ),
-      payload: message.data['booking_id'],
+      payload: isChat ? ChatPush.payloadFor(message.data) : message.data['booking_id'],
     );
   }
 

@@ -6,6 +6,9 @@ import 'core/theme/app_theme.dart';
 import 'core/notification_service.dart';
 import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
+import 'core/chat_push.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +27,8 @@ void main() async {
   };
 
   await NotificationService.instance.init();
+  ChatPush.navigatorKey = navigatorKey;
+  await ChatPush.init();
   runApp(const BillzifyApp());
 }
 
@@ -34,6 +39,7 @@ class BillzifyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Billzify',
+      navigatorKey: navigatorKey,
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       home: const SplashScreen(),

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../core/api_service.dart';
@@ -25,6 +26,9 @@ import 'no_show_screen.dart';
 import '../core/api_service.dart';
 import 'subuser_screen.dart';
 import 'ai_assistant_screen.dart';
+import 'chat_common.dart';
+import 'chat_list_screen.dart';
+import '../core/chat_push.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -39,6 +43,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _checkingAvail = false;
   Map<String, dynamic> _permissions = {};
   bool _permissionsLoaded = false;
+  Map<String, dynamic> _chatMenu = {'visible': false, 'enabled': false, 'unread': 0};
+  Timer? _chatTimer;
 
   String _hotelName = 'Loading...';
 
@@ -77,10 +83,18 @@ class _DashboardScreenState extends State<DashboardScreen>
     _load();
     _loadHotelName();
     _loadPermissions();
+    _loadChatMenu();
+    // keep the chat unread count fresh while the dashboard is open
+    _chatTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (_chatMenu['visible'] == true) _loadChatMenu();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToSelected());
 
     // Naya booking aaye to dashboard auto-refresh ho jaye
     NotificationService.instance.newBookingTrigger.addListener(_onNewBooking);
+    NotificationService.instance.chatTrigger.addListener(_onChatMessage);
+    // a chat notification tapped while the app was closed opens here
+    WidgetsBinding.instance.addPostFrameCallback((_) => ChatPush.openPending());
   }
 
   Future<void> _loadPermissions() async {
@@ -97,6 +111,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  Future<void> _loadChatMenu() async {
+    final m = await ChatApi.menuState();
+    if (mounted) setState(() => _chatMenu = m);
+  }
+
   bool _canAccess(String pageKey) {
     if (!_permissionsLoaded) return true; // load hone tak sab dikhao (avoid flicker)
     return _permissions[pageKey] != false;
@@ -104,6 +123,10 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   void _onNewBooking() {
     if (mounted) _load();
+  }
+
+  void _onChatMessage() {
+    if (mounted) _loadChatMenu();
   }
 
   Future<void> _loadHotelName() async {
@@ -125,6 +148,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.instance.newBookingTrigger.removeListener(_onNewBooking);
+    NotificationService.instance.chatTrigger.removeListener(_onChatMessage);
+    _chatTimer?.cancel();
     _dateCtrl.dispose();
     super.dispose();
   }
@@ -143,6 +168,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       });
       // ✅ Resume hone par badge count fresh karo (background notif ke baad)
       NotificationService.instance.refreshUnreadCount();
+      _loadChatMenu();
     }
   }
 
@@ -378,60 +404,103 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                   const Spacer(),
-              Row(
-                children: [
-                  // IconButton(
-                  //   onPressed: () => Navigator.of(context).push(
-                  //       MaterialPageRoute(builder: (_) => const AiAssistantScreen())),
-                  //   icon: const Icon(Icons.smart_toy_outlined, color: AppColors.primary, size: 24),
-                  //   tooltip: 'AI Assistant',
-                  // ),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: ValueListenableBuilder<int>(
-                      valueListenable: NotificationService.instance.unreadCount,
-                      builder: (context, count, _) {
-                        return Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            IconButton(
-                              onPressed: () async {
-                                await NotificationService.instance.clearUnread();
-                                if (!mounted) return;
-                                Navigator.of(context).push(MaterialPageRoute(
-                                    builder: (_) => const NotificationsScreen()));
-                              },
-                              icon: const Icon(Icons.notifications_none_rounded,
-                                  color: AppColors.textPrimary, size: 26),
-                            ),
-                            if (count > 0)
-                              Positioned(
-                                right: 6,
-                                top: 6,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFDC2626),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    count > 99 ? '99+' : '$count',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700),
+                  Row(
+                    children: [
+                      // IconButton(
+                      //   onPressed: () => Navigator.of(context).push(
+                      //       MaterialPageRoute(builder: (_) => const AiAssistantScreen())),
+                      //   icon: const Icon(Icons.smart_toy_outlined, color: AppColors.primary, size: 24),
+                      //   tooltip: 'AI Assistant',
+                      // ),
+                      // ── OTA Messages (shows only for users with chat access) ──
+                      if (_chatMenu['visible'] == true)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              IconButton(
+                                tooltip: 'OTA Messages',
+                                onPressed: () async {
+                                  await Navigator.of(context).push(MaterialPageRoute(
+                                      builder: (_) => const ChatListScreen()));
+                                  _loadChatMenu();
+                                },
+                                icon: const Icon(Icons.textsms_outlined,
+                                    color: AppColors.textPrimary, size: 22),
+                              ),
+                              if (((_chatMenu['unread'] ?? 0) as int) > 0)
+                                Positioned(
+                                  right: 4,
+                                  top: 4,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.textPrimary,
+                                      borderRadius: BorderRadius.circular(9),
+                                      border: Border.all(color: Colors.white, width: 1.5),
+                                    ),
+                                    child: Text(
+                                      ((_chatMenu['unread'] as int) > 99) ? '99+' : '${_chatMenu['unread']}',
+                                      style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          height: 1.1,
+                                          fontWeight: FontWeight.w700),
+                                    ),
                                   ),
                                 ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
+                            ],
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: NotificationService.instance.unreadCount,
+                          builder: (context, count, _) {
+                            return Stack(
+                              clipBehavior: Clip.none,
+                              children: [
+                                IconButton(
+                                  onPressed: () async {
+                                    await NotificationService.instance.clearUnread();
+                                    if (!mounted) return;
+                                    Navigator.of(context).push(MaterialPageRoute(
+                                        builder: (_) => const NotificationsScreen()));
+                                  },
+                                  icon: const Icon(Icons.notifications_none_rounded,
+                                      color: AppColors.textPrimary, size: 26),
+                                ),
+                                if (count > 0)
+                                  Positioned(
+                                    right: 6,
+                                    top: 6,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFDC2626),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        count > 99 ? '99+' : '$count',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700),
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
                 ],
               ),
             ),
@@ -825,6 +894,27 @@ class _DashboardScreenState extends State<DashboardScreen>
               controller: scrollCtrl,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
               children: [
+                // ── Guest Messages ──
+                if (_chatMenu['visible'] == true) ...[
+                  _menuSection('Guest Messages'),
+                  _menuGrid([
+                    _menuItem(
+                      Icons.chat_bubble_outline_rounded,
+                      ((_chatMenu['unread'] ?? 0) as int) > 0
+                          ? 'OTA Messages\n(${_chatMenu['unread']} new)'
+                          : (_chatMenu['enabled'] == true ? 'OTA\nMessages' : 'OTA Messages\nOff'),
+                      const Color(0xFF1A2540),
+                          () async {
+                        Navigator.pop(context);
+                        await Navigator.push(context, MaterialPageRoute(
+                            builder: (_) => const ChatListScreen()));
+                        _loadChatMenu();
+                      },
+                    ),
+                  ]),
+                  const SizedBox(height: 16),
+                ],
+
                 // ── Inventory Section ──
                 if (_canAccess('mobile_inventory') ||
                     _canAccess('mobile_bulk_update') ||
