@@ -56,7 +56,10 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _netError = false;
   List<dynamic> _arrivals = [];
   List<dynamic> _departures = [];
+  List<dynamic> _stayovers = [];      // 🔥 NEW: stayover guests
+  List<dynamic> _availCats = [];      // 🔥 NEW: category-wise available rooms
   int _available = 0;
+  // _filter: 0 = all, 1 = arrivals, 2 = departures, 3 = stayover, 4 = available
   int _filter = 0;
 
   static const _months = [
@@ -220,6 +223,22 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
   }
 
+  // 🔥 NEW: selected date ki inventory category-wise (api_available_categories)
+  // fail hone par null return karta hai taaki purana count use ho sake
+  Future<Map<String, dynamic>?> _fetchAvailCategories(String? uid, String dateStr) async {
+    try {
+      final res = await ApiService.instance
+          .postData(AppConfig.availableCategories, {'user_id': uid, 'date': dateStr});
+      return {
+        'total': (res.data['total'] as num?)?.toInt() ?? 0,
+        'categories': (res.data['categories'] as List?) ?? [],
+      };
+    } catch (e) {
+      if (isNetworkError(e)) _netError = true;
+      return null;
+    }
+  }
+
   Future<void> _load() async {
     setState(() { _loading = true; _netError = false; });
     final uid = await ApiService.instance.getUserId();
@@ -227,13 +246,20 @@ class _DashboardScreenState extends State<DashboardScreen>
     final results = await Future.wait([
       _safeList(AppConfig.todayArrivals, uid, dateStr),
       _safeList(AppConfig.departures, uid, dateStr),
+      _safeList(AppConfig.stayovers, uid, dateStr),       // 🔥 NEW
       _fetchAvailable(uid, dateStr),
+      _fetchAvailCategories(uid, dateStr),                // 🔥 NEW
     ]);
     if (!mounted) return;
     setState(() {
       _arrivals = results[0] as List;
       _departures = results[1] as List;
-      _available = results[2] as int;
+      _stayovers = results[2] as List;
+      _available = results[3] as int;
+      final cats = results[4] as Map<String, dynamic>?;
+      _availCats = (cats?['categories'] as List?) ?? [];
+      // card ka count category list ke total se match kare
+      if (cats != null) _available = cats['total'] as int;
       _loading = false;
     });
   }
@@ -525,10 +551,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                     accentColor: const Color(0xFFF4A5A5), // Coral
                     onTap: () => setState(() => _filter = _filter == 2 ? 0 : 2)),
                 const SizedBox(width: 10),
+                // 🔥 NEW: Stayover card
+                _statCard(
+                    icon: Icons.hotel_outlined,
+                    label: 'Stayover',
+                    value: _loading ? '–' : '${_stayovers.length}',
+                    active: _filter == 3,
+                    accentColor: const Color(0xFFF2B65A), // Amber
+                    onTap: () => setState(() => _filter = _filter == 3 ? 0 : 3)),
+                const SizedBox(width: 10),
                 _statCard(
                     icon: Icons.bed_outlined,
                     label: 'Available',
                     value: _loading ? '–' : '$_available',
+                    active: _filter == 4,                                       // 🔥 NEW
+                    onTap: () => setState(() => _filter = _filter == 4 ? 0 : 4), // 🔥 NEW
                     accentColor: const Color(0xFF4FB8A1)), // Mint green
               ]),
             ),
@@ -551,6 +588,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     final rows = <dynamic>[];
     final showA = _filter == 0 || _filter == 1;
     final showD = _filter == 0 || _filter == 2;
+    final showS = _filter == 0 || _filter == 3;   // 🔥 NEW: stayover
+    final showAv = _filter == 4;                  // 🔥 NEW: available (sirf card tap par)
     if (showA) {
       rows.add({'_h': 'Arrivals', '_c': _arrivals.length});
       if (_arrivals.isEmpty) {
@@ -565,6 +604,24 @@ class _DashboardScreenState extends State<DashboardScreen>
         rows.add({'_e': _netError ? 'net' : 'No departures on this date'});
       } else {
         rows.addAll(_departures);
+      }
+    }
+    // 🔥 NEW: Stayover section
+    if (showS) {
+      rows.add({'_h': 'Stayover', '_c': _stayovers.length});
+      if (_stayovers.isEmpty) {
+        rows.add({'_e': _netError ? 'net' : 'No stayover guests on this date'});
+      } else {
+        rows.addAll(_stayovers);
+      }
+    }
+    // 🔥 NEW: Available rooms category-wise
+    if (showAv) {
+      rows.add({'_h': 'Available Rooms', '_c': _available});
+      if (_availCats.isEmpty) {
+        rows.add({'_e': _netError ? 'net' : 'No inventory found for this date'});
+      } else {
+        rows.addAll(_availCats.map((c) => {'_cat': c}));
       }
     }
     return rows;
@@ -590,6 +647,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           return _emptyRow(v == 'net'
               ? 'No internet connection. Please check your network.'
               : v);
+        }
+        if (r is Map && r.containsKey('_cat')) {   // 🔥 NEW
+          return _categoryCard(r['_cat']);
         }
         return _guestCard(r);
       },
@@ -617,6 +677,48 @@ class _DashboardScreenState extends State<DashboardScreen>
       padding: const EdgeInsets.only(bottom: 18),
       child: Text(msg, style: const TextStyle(
           color: AppColors.textSecondary, fontSize: 13)));
+
+  // 🔥 NEW: ek room category ka available card
+  Widget _categoryCard(dynamic c) {
+    final name = (c['category'] ?? '-').toString();
+    final avail = (c['available'] as num?)?.toInt() ?? 0;
+    final soldOut = avail <= 0;
+    final fg = soldOut ? const Color(0xFFDC2626) : const Color(0xFF4FB8A1);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+        boxShadow: const [BoxShadow(color: Color(0x0A000000),
+            blurRadius: 12, offset: Offset(0, 4))],
+      ),
+      child: Row(children: [
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+              color: fg.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(12)),
+          child: Icon(Icons.king_bed_outlined, color: fg, size: 22),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const SizedBox(height: 3),
+            Text(soldOut ? 'Sold Out' : 'Rooms available',
+                style: TextStyle(fontSize: 12,
+                    color: soldOut ? fg : AppColors.textSecondary)),
+          ]),
+        ),
+        Text('$avail', style: TextStyle(
+            fontSize: 20, fontWeight: FontWeight.w800, color: fg)),
+      ]),
+    );
+  }
 
   Widget _dateStrip() {
     return SizedBox(

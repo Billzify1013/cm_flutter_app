@@ -89,4 +89,6 @@ class AppConfig {
   static const String aiRunAction = '/api/ai-assistant/run-action/';
   static const String aiAskAnything = '/api/ai-assistant/ask/';
   static const availableRooms = '/api_available_rooms/';
+  static const String stayovers = '/api/stayovers/';
+  static const String availableCategories = '/api/available-categories/';
 }
