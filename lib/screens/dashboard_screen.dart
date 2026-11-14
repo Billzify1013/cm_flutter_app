@@ -833,13 +833,25 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                     child: Icon(icon, size: 13, color: Colors.white)),
                 const SizedBox(height: 8),
-                Text(value, style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary, letterSpacing: -0.5)),
+                // 🔥 FIX: lamba number/label ho to ek hi line mein chhota ho jaye,
+                // box ka size same rahe (wrap nahi hoga)
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(value, maxLines: 1, softWrap: false,
+                      style: const TextStyle(
+                          fontSize: 18, fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary, letterSpacing: -0.5)),
+                ),
                 const SizedBox(height: 1),
-                Text(label, style: const TextStyle(
-                    fontSize: 10, color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w500, letterSpacing: 0.2)),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(label, maxLines: 1, softWrap: false,
+                      style: const TextStyle(
+                          fontSize: 10, color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w500, letterSpacing: 0.2)),
+                ),
               ],
             ),
           ),
