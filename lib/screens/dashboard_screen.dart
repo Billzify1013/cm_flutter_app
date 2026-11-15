@@ -29,6 +29,8 @@ import 'ai_assistant_screen.dart';
 import 'chat_common.dart';
 import 'chat_list_screen.dart';
 import '../core/chat_push.dart';
+import '../core/display_prefs.dart';
+import '../widgets/room_category_tag.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -96,6 +98,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     // Naya booking aaye to dashboard auto-refresh ho jaye
     NotificationService.instance.newBookingTrigger.addListener(_onNewBooking);
     NotificationService.instance.chatTrigger.addListener(_onChatMessage);
+    // Room category setting (Profile se toggle hoti hai)
+    DisplayPrefs.instance.showRoomCategory.addListener(_onPrefsChanged);
+    DisplayPrefs.instance.load();
     // a chat notification tapped while the app was closed opens here
     WidgetsBinding.instance.addPostFrameCallback((_) => ChatPush.openPending());
   }
@@ -132,6 +137,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (mounted) _loadChatMenu();
   }
 
+  void _onPrefsChanged() {
+    if (mounted) setState(() {});
+  }
+
   Future<void> _loadHotelName() async {
     try {
       final name = await ApiService.instance.getHotelName();
@@ -152,6 +161,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.removeObserver(this);
     NotificationService.instance.newBookingTrigger.removeListener(_onNewBooking);
     NotificationService.instance.chatTrigger.removeListener(_onChatMessage);
+    DisplayPrefs.instance.showRoomCategory.removeListener(_onPrefsChanged);
     _chatTimer?.cancel();
     _dateCtrl.dispose();
     super.dispose();
@@ -197,7 +207,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     try {
       final res = await ApiService.instance
           .postData(path, {'user_id': uid, 'date': dateStr});
-      return (res.data['arrivals'] as List?) ?? [];
+      final list = (res.data['arrivals'] as List?) ?? [];
+      if (list.isNotEmpty) {
+        debugPrint('[$path] ${list.first}');   // 👈 temporary
+      }
+      return list;
     } catch (e) {
       if (isNetworkError(e)) _netError = true;
       return [];
@@ -874,7 +888,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     final hasPhone = cleanPhone.isNotEmpty &&
         cleanPhone.replaceAll(RegExp(r'[0+]'), '').isNotEmpty;
     final dateRange = (ci.isNotEmpty || co.isNotEmpty) ? '$ci → $co' : '';
-    final sub = [if (room.isNotEmpty) room, if (dateRange.isNotEmpty) dateRange].join('  ·  ');
+    final showRoom =
+        DisplayPrefs.instance.showRoomCategory.value && room.isNotEmpty;
 
     return GestureDetector(
       onTap: () => _openDetail(g),
@@ -902,9 +917,25 @@ class _DashboardScreenState extends State<DashboardScreen>
                       fontSize: 11, color: AppColors.textSecondary)),
               ]),
               const SizedBox(height: 3),
-              Text(sub.isEmpty ? channel : sub, maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              // Dates apni alag line me — kabhi cut nahi honge
+              // (jagah kam ho to text thoda chhota ho jayega, "..." nahi aayega)
+              if (dateRange.isNotEmpty)
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(dateRange, maxLines: 1, softWrap: false,
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary)),
+                )
+              else if (channel.isNotEmpty)
+                Text(channel, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+              // Room category — sirf jab setting ON ho
+              if (showRoom) ...[
+                const SizedBox(height: 5),
+                RoomCategoryTag(room),
+              ],
             ]),
           ),
           const SizedBox(width: 8),

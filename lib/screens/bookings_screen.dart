@@ -5,6 +5,8 @@ import '../core/error_util.dart';
 import '../config/app_config.dart';
 import '../widgets/channel_avatar.dart';
 import 'booking_detail_screen.dart';
+import '../core/display_prefs.dart';
+import '../widgets/room_category_tag.dart';
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key});
@@ -44,10 +46,17 @@ class _BookingsScreenState extends State<BookingsScreen> {
     super.initState();
     _loadDefault();
     _scrollCtrl.addListener(_onScroll);
+    DisplayPrefs.instance.showRoomCategory.addListener(_onPrefsChanged);
+    DisplayPrefs.instance.load();
+  }
+
+  void _onPrefsChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    DisplayPrefs.instance.showRoomCategory.removeListener(_onPrefsChanged);
     _searchCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
@@ -466,8 +475,11 @@ class _BookingsScreenState extends State<BookingsScreen> {
     final pay     = (g['payment_status'] ?? '').toString();
     final status  = (g['status'] ?? '').toString();
     final id      = (g['booking_ref'] ?? '').toString();
+    final room    = (g['room_category'] ?? '').toString();
     final ci      = _fmtDate(g['check_in_date']?.toString());
     final co      = _fmtDate(g['check_out_date']?.toString());
+    final showRoom =
+        DisplayPrefs.instance.showRoomCategory.value && room.isNotEmpty;
 
     return GestureDetector(
       onTap: () => _openDetail(g),
@@ -497,10 +509,16 @@ class _BookingsScreenState extends State<BookingsScreen> {
                     fontSize: 11, color: AppColors.textSecondary)),
             ]),
             const SizedBox(height: 2),
-            Text('$ci  →  $co', style: const TextStyle(
-                fontSize: 12, color: AppColors.textSecondary)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text('$ci  →  $co', maxLines: 1, softWrap: false,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary)),
+            ),
             const SizedBox(height: 6),
             Wrap(spacing: 6, runSpacing: 4, children: [
+              if (showRoom) RoomCategoryTag(room),
               if (pay.isNotEmpty) _payBadge(pay),
               if (status.isNotEmpty) _statusBadge(status),
             ]),

@@ -7,6 +7,8 @@ import '../config/app_config.dart';
 import '../widgets/channel_avatar.dart';
 import 'booking_detail_screen.dart';
 import '../core/notification_service.dart';
+import '../core/display_prefs.dart';
+import '../widgets/room_category_tag.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -33,6 +35,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     super.initState();
     _load();
     NotificationService.instance.clearUnread();
+    DisplayPrefs.instance.showRoomCategory.addListener(_onPrefsChanged);
+    DisplayPrefs.instance.load();
+  }
+
+  bool get _showRoom => DisplayPrefs.instance.showRoomCategory.value;
+
+  void _onPrefsChanged() {
+    if (!mounted) return;
+    setState(() {
+      // setting OFF hui to room filter bhi reset kar do
+      if (!_showRoom) _room = 'All';
+    });
+  }
+
+  @override
+  void dispose() {
+    DisplayPrefs.instance.showRoomCategory.removeListener(_onPrefsChanged);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -104,7 +124,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasRooms = _roomCounts.isNotEmpty;
+    final hasRooms = _showRoom && _roomCounts.isNotEmpty;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recent bookings',
@@ -276,16 +296,21 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text('$ci  →  $co',
-                      style: const TextStyle(
-                          fontSize: 12, color: AppColors.textSecondary)),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text('$ci  →  $co',
+                        maxLines: 1,
+                        softWrap: false,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                  ),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 6,
                     runSpacing: 6,
                     children: [
-                      if (room.isNotEmpty)
-                        _badge(room, AppColors.accentSoft, AppColors.primary),
+                      if (_showRoom && room.isNotEmpty) RoomCategoryTag(room),
                       if (pay.isNotEmpty) _paymentBadge(pay),
                       if (status.isNotEmpty) _statusBadge(status),
                     ],

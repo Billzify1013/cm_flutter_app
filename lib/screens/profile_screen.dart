@@ -6,6 +6,7 @@ import '../core/api_service.dart';
 import '../core/theme/app_colors.dart';
 import '../core/error_util.dart';
 import '../config/app_config.dart';
+import '../core/display_prefs.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -53,7 +54,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   ];
 
   @override
-  void initState() { super.initState(); _load(); }
+  void initState() {
+    super.initState();
+    _load();
+    DisplayPrefs.instance.load();
+  }
+
+  Future<void> _toggleRoomCat(bool value) async {
+    await DisplayPrefs.instance.setShowRoomCategory(value);
+    if (!mounted) return;
+    _snack(value
+        ? 'Room category will show on booking cards'
+        : 'Room category hidden from booking cards');
+  }
 
   @override
   void dispose() {
@@ -425,6 +438,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       activeColor: AppColors.primary,
                       onChanged: _toggleNotif)),
             ])),
+
+        const SizedBox(height: 16),
+
+        // Display Settings (device setting — staff/subuser bhi badal sakte hain)
+        _sec('Display Settings'),
+        Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+                color: AppColors.card,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border)),
+            // Switch seedha DisplayPrefs se padhta hai — ek hi source of truth
+            child: ValueListenableBuilder<bool>(
+              valueListenable: DisplayPrefs.instance.showRoomCategory,
+              builder: (context, showRoomCat, _) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                leading: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                        color: AppColors.accentSoft,
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Icon(Icons.king_bed_outlined,
+                        color: showRoomCat
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                        size: 20)),
+                title: const Text('Show Room Category in Bookings',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                    showRoomCat
+                        ? 'Shown on Dashboard, Bookings & Notifications'
+                        : 'Turn on if your hotel has more than one room type',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary)),
+                trailing: Switch(
+                    value: showRoomCat,
+                    activeColor: AppColors.primary,
+                    onChanged: _toggleRoomCat),
+              ),
+            )),
 
         const SizedBox(height: 16),
 
