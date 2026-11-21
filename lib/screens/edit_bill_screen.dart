@@ -9,12 +9,15 @@ class EditBillScreen extends StatefulWidget {
   final Map<String, dynamic> booking;
   final List<dynamic> rooms;
   final List<dynamic> posItems;
+  // GST ON/OFF - sirf dikhane ke liye (calculation same). Default ON -> purana flow same.
+  final bool showGst;
 
   const EditBillScreen({
     super.key,
     required this.booking,
     required this.rooms,
     required this.posItems,
+    this.showGst = true,
   });
 
   @override
@@ -171,9 +174,10 @@ class _EditBillScreenState extends State<EditBillScreen> {
                   child: Text('Room Type', style: TextStyle(
                       fontSize: 11, fontWeight: FontWeight.w700,
                       color: AppColors.textSecondary))),
-              const Expanded(flex: 2,
-                  child: Text('Total/Night\n(incl. GST)', textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+              Expanded(flex: 2,
+                  child: Text(widget.showGst ? 'Total/Night\n(incl. GST)' : 'Total/Night',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                           color: AppColors.textSecondary))),
               Expanded(flex: 2,
                   child: Text('$_nights Night Total',
@@ -194,21 +198,22 @@ class _EditBillScreenState extends State<EditBillScreen> {
                             Text(r['room_category']?.toString() ?? '-',
                                 style: const TextStyle(fontSize: 13,
                                     fontWeight: FontWeight.w600)),
-                            // Show base rate hint
-                            ValueListenableBuilder(
-                                valueListenable: _roomCtrl[id]!,
-                                builder: (_, val, __) {
-                                  final tot  = double.tryParse(val.text) ?? 0;
-                                  final gst  = tot / (1 + (tot > 7500 * 1.05 ? 0.18 : 0.05));
-                                  final base = tot - (tot - gst);
-                                  // Simpler: base = tot / (1+gst%)
-                                  final b2   = tot > 7500 * 1.18
-                                      ? tot / 1.18 : tot / 1.05;
-                                  return Text(
-                                      'Base ₹${b2.toStringAsFixed(0)}/night',
-                                      style: const TextStyle(fontSize: 10,
-                                          color: AppColors.textSecondary));
-                                }),
+                            // Show base rate hint (sirf GST ON me)
+                            if (widget.showGst)
+                              ValueListenableBuilder(
+                                  valueListenable: _roomCtrl[id]!,
+                                  builder: (_, val, __) {
+                                    final tot  = double.tryParse(val.text) ?? 0;
+                                    final gst  = tot / (1 + (tot > 7500 * 1.05 ? 0.18 : 0.05));
+                                    final base = tot - (tot - gst);
+                                    // Simpler: base = tot / (1+gst%)
+                                    final b2   = tot > 7500 * 1.18
+                                        ? tot / 1.18 : tot / 1.05;
+                                    return Text(
+                                        'Base ₹${b2.toStringAsFixed(0)}/night',
+                                        style: const TextStyle(fontSize: 10,
+                                            color: AppColors.textSecondary));
+                                  }),
                           ])),
                   Expanded(flex: 2,
                       child: _editField(_roomCtrl[id]!, prefix: '₹',
@@ -269,9 +274,10 @@ class _EditBillScreenState extends State<EditBillScreen> {
                                   children: [
                                     Text(row.name, style: const TextStyle(fontSize: 13,
                                         fontWeight: FontWeight.w600)),
-                                    Text('GST ${row.gstRate.toStringAsFixed(0)}%',
-                                        style: const TextStyle(fontSize: 10,
-                                            color: AppColors.textSecondary)),
+                                    if (widget.showGst)
+                                      Text('GST ${row.gstRate.toStringAsFixed(0)}%',
+                                          style: const TextStyle(fontSize: 10,
+                                              color: AppColors.textSecondary)),
                                   ])),
                           Expanded(flex: 1,
                               child: _editField(row.qtyCtrl, isInt: true,

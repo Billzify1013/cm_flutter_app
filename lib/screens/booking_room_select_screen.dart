@@ -80,6 +80,7 @@ class _NonOccCard extends StatefulWidget {
   final String checkin;
   final String checkout;
   final TotalsCallback onChanged;
+  final bool showGst;
   const _NonOccCard({
     super.key,
     required this.catId,
@@ -91,6 +92,7 @@ class _NonOccCard extends StatefulWidget {
     required this.checkin,
     required this.checkout,
     required this.onChanged,
+    this.showGst = true,
   });
   @override
   State<_NonOccCard> createState() => _NonOccCardState();
@@ -217,12 +219,14 @@ class _NonOccCardState extends State<_NonOccCard>
             setState(() { base = g['base']!; gst = g['gst']!; });
             _push();
           }),
-          const SizedBox(height: 8),
-          Row(children: [
-            _pill('Base ₹${f(base)}', AppColors.successSoft, AppColors.success),
-            const SizedBox(width: 8),
-            _pill('GST ₹${f(gst)}', AppColors.warningSoft, AppColors.warning),
-          ]),
+          if (widget.showGst) ...[
+            const SizedBox(height: 8),
+            Row(children: [
+              _pill('Base ₹${f(base)}', AppColors.successSoft, AppColors.success),
+              const SizedBox(width: 8),
+              _pill('GST ₹${f(gst)}', AppColors.warningSoft, AppColors.warning),
+            ]),
+          ],
           if (_avail.isNotEmpty) ...[
             const SizedBox(height: 12),
             _roomPicker(
@@ -252,6 +256,7 @@ class _OccCard extends StatefulWidget {
   final String checkin;
   final String checkout;
   final TotalsCallback onChanged;
+  final bool showGst;
   const _OccCard({
     super.key,
     required this.catId,
@@ -263,6 +268,7 @@ class _OccCard extends StatefulWidget {
     required this.checkin,
     required this.checkout,
     required this.onChanged,
+    this.showGst = true,
   });
   @override
   State<_OccCard> createState() => _OccCardState();
@@ -464,12 +470,14 @@ class _OccCardState extends State<_OccCard>
                   setState(() { r.base = g['base']!; r.gst = g['gst']!; });
                   _push();
                 }),
-                const SizedBox(height: 6),
-                Row(children: [
-                  _pill('Base ₹${f(r.base)}', AppColors.successSoft, AppColors.success),
-                  const SizedBox(width: 8),
-                  _pill('GST ₹${f(r.gst)}', AppColors.warningSoft, AppColors.warning),
-                ]),
+                if (widget.showGst) ...[
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    _pill('Base ₹${f(r.base)}', AppColors.successSoft, AppColors.success),
+                    const SizedBox(width: 8),
+                    _pill('GST ₹${f(r.gst)}', AppColors.warningSoft, AppColors.warning),
+                  ]),
+                ],
               ],
             ]),
           );
@@ -712,6 +720,8 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
   // Booking data
   late final bool _isOcc;
   late final bool _stopSell;
+  // GST ON/OFF (API se). Nahi aaya to ON -> purana flow same. Sirf dikhane ke liye.
+  late final bool _showGst;
   late final int _nights;
   late final List<Map<String, dynamic>> _rooms;
   late final Map<String, Map<String, List<Map<String, dynamic>>>> _ratePlans;
@@ -730,6 +740,7 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
     final d = widget.bookingData;
     _isOcc = d['is_occupancy_based'] == true;
     _stopSell = d['stop_sell_warning'] == true;
+    _showGst = d['gst_enabled'] != false;
     _nights = (d['nights'] as num?)?.toInt() ?? 1;
     _planNames = List<String>.from((d['plan_names'] as List?) ?? []);
     _rooms = List<Map<String, dynamic>>.from((d['rooms'] as List?) ?? []);
@@ -1004,6 +1015,7 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
               checkin: _apiDate(widget.checkin),
               checkout: _apiDate(widget.checkout),
               onChanged: _onRoomChanged,
+              showGst: _showGst,
             )
                 : _NonOccCard(
               key: ValueKey('noc_$id'),
@@ -1016,6 +1028,7 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
               checkin: _apiDate(widget.checkin),
               checkout: _apiDate(widget.checkout),
               onChanged: _onRoomChanged,
+              showGst: _showGst,
             );
           }),
           ..._rooms
@@ -1109,10 +1122,13 @@ class _ScreenState extends State<BookingRoomSelectScreen> {
             _srow('Rooms selected', '$_roomCount'),
             _srow('Nights', '$_nights'),
             const Divider(height: 14),
-            _srow('Base amount', '₹${_fmt(_totalBase)}'),
-            _srow('Total GST', '₹${_fmt(_totalGst)}'),
-            const Divider(height: 14),
-            _srow('Grand total (incl. GST)', '₹${_fmt(_grandTotal)}',
+            if (_showGst) ...[
+              _srow('Base amount', '₹${_fmt(_totalBase)}'),
+              _srow('Total GST', '₹${_fmt(_totalGst)}'),
+              const Divider(height: 14),
+            ],
+            _srow(_showGst ? 'Grand total (incl. GST)' : 'Grand total',
+                '₹${_fmt(_grandTotal)}',
                 bold: true),
             _srow('Advance paid', '₹${_fmt(_advance)}'),
             Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [

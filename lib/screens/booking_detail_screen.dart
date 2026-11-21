@@ -54,6 +54,14 @@ class _S extends State<BookingDetailScreen> {
 
   bool get _isInvoiceCreated => _data?['has_invoice'] == true;
 
+  // GST display (API se): 'full' = GST registered, 'ota' = not registered + OTA booking,
+  // 'none' = not registered + self booking. API ne nahi bheja to 'full' -> purana flow same.
+  String get _gstDisplay {
+    final v = _data?['gst_display']?.toString() ?? 'full';
+    return (v == 'ota' || v == 'none') ? v : 'full';
+  }
+  bool get _gstOn => _gstDisplay == 'full';
+
   bool get _hasPhone {
     final p = _b['phone']?.toString() ?? '';
     final c = p.replaceAll(RegExp(r'[^0-9+]'), '');
@@ -541,6 +549,7 @@ class _S extends State<BookingDetailScreen> {
           booking: Map<String, dynamic>.from(_b as Map),
           rooms: (_data?['rooms'] as List?) ?? [],
           posItems: (_data?['pos_items'] as List?) ?? [],
+          showGst: _gstOn,
         )));
     if (result == true) _load();
   }
@@ -1158,8 +1167,9 @@ class _S extends State<BookingDetailScreen> {
                 _mi('product', Icons.receipt_outlined, 'Add product bill'),
                 _mi('category', Icons.swap_horiz_outlined, 'Change category'),
                 _mi('bill', Icons.edit_note_outlined, 'Edit bill'),
-                _mi('gst', Icons.receipt_outlined,
-                    _isInvoiceCreated ? 'Update Invoice GST' : 'Guest GST'),
+                if (_gstOn)
+                  _mi('gst', Icons.receipt_outlined,
+                      _isInvoiceCreated ? 'Update Invoice GST' : 'Guest GST'),
                 const PopupMenuDivider(),
                 if ((_b['status']?.toString() ?? '').toLowerCase() != 'cancel')
                   _mi('cancel', Icons.cancel_outlined,
@@ -1296,7 +1306,19 @@ class _S extends State<BookingDetailScreen> {
     final commission = (comm['commission'] as num?)?.toDouble() ?? 0;
     final tds = (comm['tds'] as num?)?.toDouble() ?? 0;
     final tcs = (comm['tcs'] as num?)?.toDouble() ?? 0;
-    final net = base - (commission + tds + tcs);
+    final gstDisplay = _gstDisplay;
+    // Not registered + self booking: poora amount hotel ka revenue (koi GST nahi)
+    final net = (gstDisplay == 'none' ? grand : base) - (commission + tds + tcs);
+    // 'none' me room rate ko guest ke actual paid rate tak le jao (tax rate me mila do)
+    double posBase = 0, posTotal = 0;
+    for (final p in ((_data?['pos_items'] as List?) ?? [])) {
+      posBase += ((p as Map)['base_amount'] as num?)?.toDouble() ?? 0;
+      posTotal += (p['total_amount'] as num?)?.toDouble() ?? 0;
+    }
+    final roomsBase = base - posBase;
+    final roomsGrand = grand - posTotal;
+    final fold = (gstDisplay == 'none' && roomsBase > 0 && roomsGrand > 0)
+        ? roomsGrand / roomsBase : 1.0;
     final cancelled = (b['status']?.toString() ?? '').toLowerCase() == 'cancel';
 
     return ListView(
@@ -1339,7 +1361,7 @@ class _S extends State<BookingDetailScreen> {
         // ── Rooms ──
         if (rooms.isNotEmpty) ...[
           _sec('Rooms (${rooms.length})'),
-          ...rooms.map(_roomCard),
+          ...rooms.map((r) => _roomCard(r, fold: fold)),
           const SizedBox(height: 14),
         ],
 
@@ -1385,43 +1407,46 @@ class _S extends State<BookingDetailScreen> {
         ],
 
 // ── POS Items ──
-    if ((_data?['pos_items'] as List? ?? []).isNotEmpty) ...[
-    _sec('Product bills (${(_data!['pos_items'] as List).length})'),
-    _card(Column(children: (_data!['pos_items'] as List)
-        .asMap().entries.map((e) {
-    final p = e.value as Map;
-    return Column(children: [
-    if (e.key > 0) const Divider(height: 12),
-    Row(children: [
-    Expanded(child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Text(p['product_name']?.toString() ?? '-',
-    style: const TextStyle(
-    fontSize: 13, fontWeight: FontWeight.w600)),
-    Text('Qty: ${p['quantity']}  •  '
-    'GST: ${(p['gst_rate'] as num?)?.toStringAsFixed(0)}%',
-    style: const TextStyle(
-    fontSize: 11, color: AppColors.textSecondary)),
-    if ((p['note'] ?? '').toString().isNotEmpty)
-    Text('📝 ${p['note']}',
-    style: const TextStyle(
-    fontSize: 11, color: AppColors.textSecondary)),
-    ])),
-    Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-    Text('₹${(p['total_amount'] as num?)?.toStringAsFixed(2)}',
-    style: const TextStyle(
-    fontSize: 14, fontWeight: FontWeight.w700,
-    color: AppColors.primary)),
-    Text('Base ₹${(p['base_amount'] as num?)?.toStringAsFixed(0)}  '
-    '+  GST ₹${((p['sgst_amount'] as num? ?? 0) + (p['cgst_amount'] as num? ?? 0)).toStringAsFixed(0)}',
-    style: const TextStyle(
-    fontSize: 10, color: AppColors.textSecondary)),
-    ]),
-    ]),
-    ]);
-    }).toList())),
-    const SizedBox(height: 14),
-    ],
+        if ((_data?['pos_items'] as List? ?? []).isNotEmpty) ...[
+          _sec('Product bills (${(_data!['pos_items'] as List).length})'),
+          _card(Column(children: (_data!['pos_items'] as List)
+              .asMap().entries.map((e) {
+            final p = e.value as Map;
+            return Column(children: [
+              if (e.key > 0) const Divider(height: 12),
+              Row(children: [
+                Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(p['product_name']?.toString() ?? '-',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                  Text(_gstOn
+                      ? 'Qty: ${p['quantity']}  •  '
+                      'GST: ${(p['gst_rate'] as num?)?.toStringAsFixed(0)}%'
+                      : 'Qty: ${p['quantity']}',
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.textSecondary)),
+                  if ((p['note'] ?? '').toString().isNotEmpty)
+                    Text('📝 ${p['note']}',
+                        style: const TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary)),
+                ])),
+                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+                  Text('₹${(p['total_amount'] as num?)?.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w700,
+                          color: AppColors.primary)),
+                  if (_gstOn)
+                    Text('Base ₹${(p['base_amount'] as num?)?.toStringAsFixed(0)}  '
+                        '+  GST ₹${((p['sgst_amount'] as num? ?? 0) + (p['cgst_amount'] as num? ?? 0)).toStringAsFixed(0)}',
+                        style: const TextStyle(
+                            fontSize: 10, color: AppColors.textSecondary)),
+                ]),
+              ]),
+            ]);
+          }).toList())),
+          const SizedBox(height: 14),
+        ],
 
 
 
@@ -1429,10 +1454,20 @@ class _S extends State<BookingDetailScreen> {
         // ── Billing ──
         _sec('Billing'),
         _card(Column(children: [
-          _br('Base amount', base),
-          _br('Tax (GST)', tax),
-          const Divider(height: 14),
-          _br('Grand total', grand, bold: true, large: true),
+          if (gstDisplay != 'none') ...[
+            _br('Base amount', base),
+            _br(gstDisplay == 'ota' ? 'GST (paid by OTA)' : 'Tax (GST)', tax,
+                info: gstDisplay == 'ota'
+                    ? _gstInfo('GST on this booking was collected & paid by '
+                    '${b['channel'] ?? 'the OTA'} (Sec 9(5)). '
+                    'It is not your tax liability.')
+                    : null),
+            const Divider(height: 14),
+          ],
+          _br('Grand total', grand, bold: true, large: true,
+              info: gstDisplay == 'none'
+                  ? _gstInfo('GST not applicable – property is not GST registered.')
+                  : null),
           const SizedBox(height: 8),
           Row(children: [
             Expanded(child: _pill2('✓ Advance', adv,
@@ -1465,45 +1500,45 @@ class _S extends State<BookingDetailScreen> {
               .asMap().entries.map((e) {
             final p = e.value as Map;
             return Column(children: [
-                if (e.key > 0) const Divider(height: 12),
-            Material(
-            color: Colors.transparent,
-            child: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: () => _editPaymentSheet(Map<String, dynamic>.from(p as Map)),
-                child: Row(children: [
-                  Container(width: 36, height: 36,
-                      decoration: BoxDecoration(
-                          color: AppColors.successSoft,
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.check_circle_outline,
-                          color: AppColors.success, size: 18)),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(p['mode']?.toString() ?? '-',
-                        style: const TextStyle(
-                            fontSize: 13, fontWeight: FontWeight.w600)),
-                    Text(p['date']?.toString() ?? '',
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textSecondary)),
-                    if ((p['transaction_id'] ?? '').toString().isNotEmpty)
-                      Text('Ref: ${p['transaction_id']}',
+              if (e.key > 0) const Divider(height: 12),
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => _editPaymentSheet(Map<String, dynamic>.from(p as Map)),
+                  child: Row(children: [
+                    Container(width: 36, height: 36,
+                        decoration: BoxDecoration(
+                            color: AppColors.successSoft,
+                            borderRadius: BorderRadius.circular(10)),
+                        child: const Icon(Icons.check_circle_outline,
+                            color: AppColors.success, size: 18)),
+                    const SizedBox(width: 10),
+                    Expanded(child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(p['mode']?.toString() ?? '-',
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w600)),
+                      Text(p['date']?.toString() ?? '',
                           style: const TextStyle(
                               fontSize: 11, color: AppColors.textSecondary)),
-                  ])),
-                  Row(children: [
-                    Text('₹${(p['amount'] as num?)?.toStringAsFixed(2) ?? '0'}',
-                        style: const TextStyle(fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.success)),
-                    const SizedBox(width: 6),
-                    const Icon(Icons.edit_outlined,
-                        size: 14, color: AppColors.textSecondary),
+                      if ((p['transaction_id'] ?? '').toString().isNotEmpty)
+                        Text('Ref: ${p['transaction_id']}',
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.textSecondary)),
+                    ])),
+                    Row(children: [
+                      Text('₹${(p['amount'] as num?)?.toStringAsFixed(2) ?? '0'}',
+                          style: const TextStyle(fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.success)),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.edit_outlined,
+                          size: 14, color: AppColors.textSecondary),
+                    ]),
                   ]),
-                ]),
-            ),
-            ),
+                ),
+              ),
             ]);
           }).toList())),
           const SizedBox(height: 14),
@@ -1585,7 +1620,7 @@ class _S extends State<BookingDetailScreen> {
   }
 
   // ── Room card ──
-  Widget _roomCard(dynamic r) {
+  Widget _roomCard(dynamic r, {double fold = 1.0}) {
     final m = r as Map;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -1602,7 +1637,9 @@ class _S extends State<BookingDetailScreen> {
           Expanded(child: Text(m['room_category']?.toString() ?? '-',
               style: const TextStyle(
                   fontWeight: FontWeight.w700, fontSize: 14))),
-          Text('₹${(m['sell_rate'] as num?)?.toStringAsFixed(2) ?? '0'}/night',
+          Text(fold == 1.0
+              ? '₹${(m['sell_rate'] as num?)?.toStringAsFixed(2) ?? '0'}/night'
+              : '₹${(((m['sell_rate'] as num?)?.toDouble() ?? 0) * fold).toStringAsFixed(2)}/night',
               style: const TextStyle(fontSize: 12,
                   fontWeight: FontWeight.w600, color: AppColors.primary)),
         ]),
@@ -1763,17 +1800,40 @@ class _S extends State<BookingDetailScreen> {
       ]);
 
   Widget _br(String l, double v,
-      {bool bold=false, bool large=false, Color? color}) =>
+      {bool bold=false, bool large=false, Color? color, Widget? info}) =>
       Padding(padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text(l, style: TextStyle(fontSize: bold?14:13,
+            info == null
+                ? Text(l, style: TextStyle(fontSize: bold?14:13,
                 color: AppColors.textSecondary,
-                fontWeight: bold?FontWeight.w700:FontWeight.w400)),
+                fontWeight: bold?FontWeight.w700:FontWeight.w400))
+                : Row(mainAxisSize: MainAxisSize.min, children: [
+              Text(l, style: TextStyle(fontSize: bold?14:13,
+                  color: AppColors.textSecondary,
+                  fontWeight: bold?FontWeight.w700:FontWeight.w400)),
+              info,
+            ]),
             Text('₹${v.toStringAsFixed(2)}', style: TextStyle(
                 fontSize: large?16:13,
                 fontWeight: bold?FontWeight.w700:FontWeight.w600,
                 color: color ?? AppColors.textPrimary)),
           ]));
+
+  // GST (i) icon - tap karne pe chhota note dikhe
+  Widget _gstInfo(String msg) => Tooltip(
+      message: msg,
+      triggerMode: TooltipTriggerMode.tap,
+      showDuration: const Duration(seconds: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      textStyle: const TextStyle(fontSize: 11, color: Colors.white, height: 1.4),
+      decoration: BoxDecoration(
+          color: const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(8)),
+      child: const Padding(
+          padding: EdgeInsets.only(left: 4),
+          child: Icon(Icons.info_outline,
+              size: 14, color: AppColors.textSecondary)));
 
   Widget _pill2(String l, double v, Color bg, Color fg) =>
       Container(
