@@ -50,5 +50,11 @@
         <string>remote-notification</string>
         <string>fetch</string>
     </array>
+        <key>NSCameraUsageDescription</key>
+        <string>Billzify uses the camera to scan guest ID cards and fill the registration form.</string>
+        <key>NSPhotoLibraryUsageDescription</key>
+        <string>Billzify uses your photos to pick a guest ID card image.</string>
+        <key>NSMicrophoneUsageDescription</key>
+        <string>Billzify does not record audio. The camera is used only to scan guest ID cards.</string>
 </dict>
 </plist>

@@ -4,6 +4,9 @@ import '../core/theme/app_colors.dart';
 import '../core/error_util.dart';
 import '../config/app_config.dart';
 import 'booking_detail_screen.dart';
+import '../guestdocs/guest_id_section.dart';
+import '../guestdocs/id_scan_button.dart';
+import '../guestdocs/guestdocs_api.dart';
 
 class StayViewScreen extends StatefulWidget {
   const StayViewScreen({super.key});
@@ -26,6 +29,7 @@ class _StayViewScreenState extends State<StayViewScreen> {
   String _today = '';
   List<dynamic> _categories = [];
   Map<String, dynamic> _stats = {};
+  Set<String> _registered = {}; // jin bookings ka registration ho chuka (green tick)
 
   static const _months = [
     'Jan','Feb','Mar','Apr','May','Jun',
@@ -79,12 +83,28 @@ class _StayViewScreenState extends State<StayViewScreen> {
         _stats = data['stats'] as Map<String, dynamic>? ?? {};
         _loading = false; _firstLoad = false; _refreshing = false;
       });
+      _loadRegistered();
     } catch (e) {
       print('STAY VIEW ERROR: $e');
       if (!mounted) return;
       if (isNetworkError(e)) _netError = true;
       setState(() { _loading = false; _firstLoad = false; _refreshing = false; });
     }
+  }
+
+  // Dikh rahi saari bookings ke liye ek hi request: registration hua ya nahi
+  Future<void> _loadRegistered() async {
+    final ids = <String>{};
+    for (final cat in _categories) {
+      for (final r in (cat['rooms'] as List? ?? [])) {
+        for (final bk in (r['bookings'] as List? ?? [])) {
+          final id = (bk['booking_id'] ?? '').toString();
+          if (id.isNotEmpty) ids.add(id);
+        }
+      }
+    }
+    final done = await GuestDocsApi.instance.registeredBookings(ids);
+    if (mounted) setState(() => _registered = done);
   }
 
   void _prevDays() { _startDate = _startDate.subtract(const Duration(days: 3)); _load(); }
@@ -405,6 +425,7 @@ class _StayViewScreenState extends State<StayViewScreen> {
     final gn = (bk['guest_name'] ?? '-').toString();
     final ch = (bk['channel'] ?? '').toString();
     final cl = bk['cut_left'] == true; final cr = bk['cut_right'] == true;
+    final reg = _registered.contains((bk['booking_id'] ?? '').toString());
     final l = (lp / 100) * tw; final w = (wp / 100) * tw;
 
     Color bg;
@@ -424,6 +445,9 @@ class _StayViewScreenState extends State<StayViewScreen> {
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06),
               blurRadius: 4, offset: const Offset(0, 1))]),
       child: Row(children: [
+        if (reg && bw > 30)
+          const Padding(padding: EdgeInsets.only(right: 3),
+              child: Icon(Icons.check_circle_rounded, size: 12, color: Color(0xFF00B894))),
         Expanded(child: Text(gn, maxLines: 1, overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                 color: AppColors.textPrimary))),
@@ -486,6 +510,7 @@ class _StayViewScreenState extends State<StayViewScreen> {
     final bookingRef = (bk['booking_ref'] ?? '').toString();
     final entryId = (bk['entry_id'] ?? '').toString();
     final categoryId = (bk['category_id'] ?? '').toString();
+    final registered = _registered.contains(bookingId);
 
     Color sc; String sl;
     if (status == 'checkin') { sc = const Color(0xFFD63031); sl = 'Checked-In'; }
@@ -528,9 +553,9 @@ class _StayViewScreenState extends State<StayViewScreen> {
               _dRow('Amount', '\u20B9$amount'),
               if (phone.isNotEmpty) ...[const SizedBox(height: 8), _dRow('Phone', phone)],
               const SizedBox(height: 8), if (bookingRef.isNotEmpty) ...[
-    const SizedBox(height: 8),
-    _dRow('Booking ID', '#$bookingRef'),
-    ],
+                const SizedBox(height: 8),
+                _dRow('Booking ID', '#$bookingRef'),
+              ],
             ]),
           ),
           const SizedBox(height: 14),
@@ -547,7 +572,7 @@ class _StayViewScreenState extends State<StayViewScreen> {
               _showChangeRoomDialog(bookingId, entryId, categoryId, checkin, checkout);
             }),
             const SizedBox(height: 8),
-            _aBtn('Registration', Icons.assignment_outlined, AppColors.primary, () {
+            _regBtn(registered, () {
               Navigator.pop(context); _openRegistration(bookingId);
             }),
             const SizedBox(height: 8),
@@ -566,7 +591,7 @@ class _StayViewScreenState extends State<StayViewScreen> {
               _showChangeRoomDialog(bookingId, entryId, categoryId, checkin, checkout);
             }),
             const SizedBox(height: 8),
-            _aBtn('Registration', Icons.assignment_outlined, AppColors.primary, () {
+            _regBtn(registered, () {
               Navigator.pop(context); _openRegistration(bookingId);
             }),
             const SizedBox(height: 8),
@@ -585,7 +610,7 @@ class _StayViewScreenState extends State<StayViewScreen> {
               _confirmAction('Undo Check-Out', 'Revert to checked-in?', () => _doUndoCheckout(bookingId, entryId));
             }),
             const SizedBox(height: 8),
-            _aBtn('Registration', Icons.assignment_outlined, AppColors.primary, () {
+            _regBtn(registered, () {
               Navigator.pop(context); _openRegistration(bookingId);
             }),
             const SizedBox(height: 8),
@@ -603,6 +628,11 @@ class _StayViewScreenState extends State<StayViewScreen> {
     Text(l, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
     Text(v, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
   ]);
+
+  // Registration ho chuka ho to hara "Registered ✓" (tap = dekho / edit karo)
+  Widget _regBtn(bool done, VoidCallback onTap) => done
+      ? _aBtn('Registered  ✓', Icons.verified_rounded, const Color(0xFF00B894), onTap)
+      : _aBtn('Registration', Icons.assignment_outlined, AppColors.primary, onTap);
 
   Widget _aBtn(String l, IconData ic, Color c, VoidCallback onTap) => GestureDetector(
     onTap: onTap,
@@ -811,12 +841,11 @@ class _StayViewScreenState extends State<StayViewScreen> {
       regData = res.data as Map<String, dynamic>;
     } catch (e) { print('REG LOAD ERROR: $e'); }
     if (!mounted) return;
-    showModalBottomSheet(
-      context: context, backgroundColor: AppColors.card, isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    // Full screen form (✕ ya phone ka back button se band)
+    Navigator.of(context).push(MaterialPageRoute<void>(
+      fullscreenDialog: true,
       builder: (_) => _RegistrationModal(bookingId: bookingId, data: regData, onSaved: _load),
-    );
+    ));
   }
 
   // ── Shimmer ──
@@ -884,6 +913,13 @@ class _RegistrationModalState extends State<_RegistrationModal> {
   List<dynamic> _rooms = [];
   bool _saving = false, _isEdit = false;
 
+  // Guest ID (scan + ID photos)
+  final _idCtrl = GuestIdController();
+  final _sm = GlobalKey<ScaffoldMessengerState>(); // sheet ke andar message dikhane ke liye
+  String? _idFull; // Mask dabane pe poora Aadhaar number yahan yaad rehta hai (Unmask ke liye)
+  late final int? _bookingIdInt = int.tryParse(widget.bookingId);
+  static const _knownIdTypes = {'aadhaar', 'pan', 'driving', 'passport', 'voter'};
+
   static const _idTypes = [
     {'value': '', 'label': '-- Select --'},
     {'value': 'aadhaar', 'label': 'Aadhaar Card'},
@@ -926,10 +962,8 @@ class _RegistrationModalState extends State<_RegistrationModal> {
   }
 
   Future<void> _save() async {
-    if (_nameC.text.trim().isEmpty) { _msg('Guest name required'); return; }
-    if (_phoneC.text.trim().isEmpty) { _msg('Phone required'); return; }
-    if (_idType.isEmpty) { _msg('ID type required'); return; }
-    if (_idNumC.text.trim().isEmpty) { _msg('ID number required'); return; }
+    // Sirf naam zaroori. Baaki jo bhara hai wahi save hoga.
+    if (_nameC.text.trim().isEmpty) { _msg('Guest name is required'); return; }
     setState(() => _saving = true);
     try {
       final uid = await ApiService.instance.getUserId();
@@ -946,6 +980,14 @@ class _RegistrationModalState extends State<_RegistrationModal> {
       });
       if (!mounted) return;
       if (res.data['success'] == true) {
+        // ID photos (jo li hain) ab S3 pe. Pehle kuch upload nahi hua tha.
+        final photoErr = await _idCtrl.saveAll();
+        if (!mounted) return;
+        if (photoErr != null) {
+          widget.onSaved();
+          _msg('Registration saved, but ID photo not saved: $photoErr. Tap Save again.');
+          return;
+        }
         Navigator.pop(context); widget.onSaved();
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text((res.data['message'] ?? 'Saved').toString()),
@@ -955,104 +997,202 @@ class _RegistrationModalState extends State<_RegistrationModal> {
     finally { if (mounted) setState(() => _saving = false); }
   }
 
-  void _msg(String m) => ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m)));
+  void _msg(String m) => _sm.currentState?.showSnackBar(SnackBar(
+      content: Text(m), backgroundColor: const Color(0xFFD63031)));
+
+  // ── Scan ID: card se form bharo (ID type/number hamesha, baaki sirf khaali ho to) ──
+  Future<void> _onScan(IdScanOutcome r) async {
+    final d = r.all;
+    setState(() {
+      if (d.idType != null && _knownIdTypes.contains(d.idType)) _idType = d.idType!;
+      final n = d.displayNumber;
+      if (n != null) { _idNumC.text = n; _idFull = null; }
+      if (_nameC.text.trim().isEmpty && d.name != null) _nameC.text = d.name!;
+      if (_addressC.text.trim().isEmpty && d.address != null) _addressC.text = d.address!;
+      if (_fromC.text.trim().isEmpty && d.city != null) _fromC.text = d.city!;
+      if (_male + _female == 0) {
+        if (d.gender == 'male') _male = 1;
+        if (d.gender == 'female') _female = 1;
+      }
+    });
+    // Add-on ON ho to wahi photo ID Photos (Front/Back) me bhi save
+    await _idCtrl.attachScan(r);
+  }
+
+  // Purane guest ka record / ID photo se: sirf khaali fields
+  void _onPrefill(GuestPrefill p) {
+    setState(() {
+      if (_nameC.text.trim().isEmpty && (p.name ?? '').isNotEmpty) _nameC.text = p.name!;
+      if (_idType.isEmpty && _knownIdTypes.contains(p.idType)) _idType = p.idType!;
+      if (_idNumC.text.trim().isEmpty && (p.idNumber ?? '').isNotEmpty) { _idNumC.text = p.idNumber!; _idFull = null; }
+      if (_addressC.text.trim().isEmpty && (p.address ?? '').isNotEmpty) _addressC.text = p.address!;
+    });
+  }
+
+  // ── Aadhaar Mask / Unmask ──
+  String get _idDigits => _idNumC.text.replaceAll(RegExp(r'\D'), '');
+  bool get _showMaskBtn =>
+      _idType == 'aadhaar' && (_idFull != null || _idDigits.length == 12 || _idDigits.length == 16);
+
+  void _toggleMask() {
+    setState(() {
+      if (_idFull != null) {
+        _idNumC.text = _idFull!;
+        _idFull = null;
+      } else {
+        final n = _idDigits;
+        _idFull = _idNumC.text;
+        _idNumC.text = '${n.length == 16 ? 'XXXX XXXX XXXX' : 'XXXX XXXX'} ${n.substring(n.length - 4)}';
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    final bp = MediaQuery.of(context).viewInsets.bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bp),
-      child: SizedBox(height: MediaQuery.of(context).size.height * 0.85,
-        child: Column(children: [
-          Container(margin: const EdgeInsets.only(top: 12, bottom: 6), width: 40, height: 4,
-              decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2))),
-          Padding(padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-              child: Row(children: [
-                const Icon(Icons.assignment_outlined, color: AppColors.primary, size: 20),
-                const SizedBox(width: 10),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  const Text('Guest Registration', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                  Text(_isEdit ? 'Edit Registration' : 'New Registration',
-                      style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                ])),
-                if (_rooms.isNotEmpty) Wrap(spacing: 4, children: _rooms.map((r) => Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(6)),
-                  child: Text('Room ${r['room_number']}', style: const TextStyle(
-                      fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                )).toList()),
-              ])),
-          const Divider(height: 1),
-          Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 20), children: [
-            _sec('Guest Information'),
-            _tf('Guest Name *', _nameC), _tf('Phone *', _phoneC, kb: TextInputType.phone),
-            _tf('Email', _emailC, kb: TextInputType.emailAddress),
-            _dd('ID Type *', _idType, _idTypes, (v) => setState(() => _idType = v)),
-            _tf('ID Number *', _idNumC),
-            const SizedBox(height: 20), _sec('Occupancy'),
-            Row(children: [
-              _cnt('Male', _male, (v) => setState(() => _male = v)),
-              const SizedBox(width: 10),
-              _cnt('Female', _female, (v) => setState(() => _female = v)),
-              const SizedBox(width: 10),
-              _cnt('Children', _children, (v) => setState(() => _children = v)),
-              const SizedBox(width: 10),
-              _cnt('Total', _male + _female + _children, null, ro: true),
-            ]),
-            const SizedBox(height: 20), _sec('Journey & Purpose'),
-            _tf('Coming From', _fromC), _tf('Going To', _toC),
-            _tf('Purpose', _purposeC), _tf('Vehicle No.', _vehicleC),
-            _tf('Address', _addressC, ml: 2), _tf('Remarks', _remarksC, ml: 2),
-            const SizedBox(height: 20),
-            Row(children: [
-              Expanded(child: _sec('Additional Guests')),
-              GestureDetector(
-                onTap: () => setState(() => _addGuests.add(
-                    {'name':'','age':'','gender':'','relation':'','id_type':'','id_number':''})),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(6)),
-                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(Icons.add, size: 14, color: AppColors.primary), SizedBox(width: 4),
-                    Text('Add', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                  ]),
-                ),
-              ),
-            ]),
-            const SizedBox(height: 8),
-            if (_addGuests.isEmpty) const Text('No additional guests',
-                style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-            for (int i = 0; i < _addGuests.length; i++) _guestCard(i),
-          ])),
-          Container(
-            padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 12),
-            decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
-            child: Row(children: [
-              Expanded(child: GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(color: AppColors.background,
-                        borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
-                    child: const Center(child: Text('Cancel', style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)))),
-              )),
-              const SizedBox(width: 12),
-              Expanded(flex: 2, child: GestureDetector(
-                onTap: _saving ? null : _save,
-                child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
-                    child: Center(child: _saving
-                        ? const SizedBox(width: 18, height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : Text(_isEdit ? 'Update' : 'Save Registration',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)))),
-              )),
-            ]),
-          ),
+    return ScaffoldMessenger(key: _sm, child: Scaffold(
+      backgroundColor: AppColors.card,
+      appBar: AppBar(
+        backgroundColor: AppColors.card, elevation: 0, scrolledUnderElevation: 0,
+        leading: IconButton(
+            icon: const Icon(Icons.close_rounded, color: AppColors.textPrimary),
+            onPressed: () => Navigator.pop(context)),
+        titleSpacing: 0,
+        title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('Guest Registration', style: TextStyle(
+              fontSize: 16, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+          Text(_isEdit ? 'Edit Registration' : 'New Registration',
+              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
         ]),
+        actions: [
+          if (_rooms.isNotEmpty) Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Wrap(spacing: 4, children: _rooms.map((r) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(6)),
+              child: Text('Room ${r['room_number']}', style: const TextStyle(
+                  fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.primary)),
+            )).toList()),
+          ),
+        ],
+        bottom: PreferredSize(preferredSize: const Size.fromHeight(1),
+            child: Container(height: 1, color: AppColors.border)),
       ),
-    );
+      body: Column(children: [
+        Expanded(child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 20), children: [
+          Row(children: [
+            Expanded(child: _sec('Guest Information')),
+            Padding(padding: const EdgeInsets.only(bottom: 10),
+                child: IdScanButton(hintType: () => _idType, onResult: _onScan)),
+          ]),
+          _tf('Guest Name *', _nameC), _tf('Phone', _phoneC, kb: TextInputType.phone),
+          _tf('Email', _emailC, kb: TextInputType.emailAddress),
+          _dd('ID Type', _idType, _idTypes, (v) => setState(() => _idType = v)),
+          _idNumberField(),
+          // ID Photos (Front / Back) Guest Information ke theek neeche - sirf add-on ON hotels ko dikhta hai
+          if (_bookingIdInt != null)
+            GuestIdSection(
+              bookingId: _bookingIdInt,
+              phoneController: _phoneC,
+              controller: _idCtrl,
+              readForm: () => GuestFormData(
+                  name: _nameC.text.trim(), phone: _phoneC.text.trim(),
+                  idType: _idType, idNumber: _idNumC.text.trim()),
+              onPrefill: _onPrefill,
+            ),
+          const SizedBox(height: 20), _sec('Occupancy'),
+          Row(children: [
+            _cnt('Male', _male, (v) => setState(() => _male = v)),
+            const SizedBox(width: 10),
+            _cnt('Female', _female, (v) => setState(() => _female = v)),
+            const SizedBox(width: 10),
+            _cnt('Children', _children, (v) => setState(() => _children = v)),
+            const SizedBox(width: 10),
+            _cnt('Total', _male + _female + _children, null, ro: true),
+          ]),
+          const SizedBox(height: 20), _sec('Journey & Purpose'),
+          _tf('Coming From', _fromC), _tf('Going To', _toC),
+          _tf('Purpose', _purposeC), _tf('Vehicle No.', _vehicleC),
+          _tf('Address', _addressC, ml: 2), _tf('Remarks', _remarksC, ml: 2),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(child: _sec('Additional Guests')),
+            GestureDetector(
+              onTap: () => setState(() => _addGuests.add(
+                  {'name':'','age':'','gender':'','relation':'','id_type':'','id_number':''})),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(color: AppColors.accentSoft, borderRadius: BorderRadius.circular(6)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Icon(Icons.add, size: 14, color: AppColors.primary), SizedBox(width: 4),
+                  Text('Add', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                ]),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          if (_addGuests.isEmpty) const Text('No additional guests',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          for (int i = 0; i < _addGuests.length; i++) _guestCard(i),
+        ])),
+        Container(
+          padding: EdgeInsets.fromLTRB(20, 12, 20, MediaQuery.of(context).padding.bottom + 12),
+          decoration: const BoxDecoration(border: Border(top: BorderSide(color: AppColors.border))),
+          child: Row(children: [
+            Expanded(child: GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(color: AppColors.background,
+                      borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.border)),
+                  child: const Center(child: Text('Cancel', style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)))),
+            )),
+            const SizedBox(width: 12),
+            Expanded(flex: 2, child: GestureDetector(
+              onTap: _saving ? null : _save,
+              child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(color: AppColors.primary, borderRadius: BorderRadius.circular(10)),
+                  child: Center(child: _saving
+                      ? const SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text(_isEdit ? 'Update' : 'Save Registration',
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)))),
+            )),
+          ]),
+        ),
+      ]),
+    ));
   }
+
+  Widget _idNumberField() => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('ID Number', style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+      const SizedBox(height: 4),
+      TextField(controller: _idNumC, style: const TextStyle(fontSize: 13),
+          onChanged: (_) => setState(() => _idFull = null),
+          decoration: InputDecoration(isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              suffixIcon: _showMaskBtn
+                  ? Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: TextButton(
+                    onPressed: _toggleMask,
+                    style: TextButton.styleFrom(
+                        backgroundColor: AppColors.accentSoft,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(0, 26),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
+                    child: Text(_idFull != null ? 'Unmask' : 'Mask',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.primary)),
+                  ))
+                  : null,
+              suffixIconConstraints: const BoxConstraints(minHeight: 26, minWidth: 0),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.border)),
+              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.border)),
+              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppColors.primary)))),
+    ]),
+  );
 
   Widget _sec(String t) => Padding(padding: const EdgeInsets.only(bottom: 10),
       child: Text(t, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700,

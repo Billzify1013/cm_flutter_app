@@ -1167,9 +1167,8 @@ class _S extends State<BookingDetailScreen> {
                 _mi('product', Icons.receipt_outlined, 'Add product bill'),
                 _mi('category', Icons.swap_horiz_outlined, 'Change category'),
                 _mi('bill', Icons.edit_note_outlined, 'Edit bill'),
-                if (_gstOn)
-                  _mi('gst', Icons.receipt_outlined,
-                      _isInvoiceCreated ? 'Update Invoice GST' : 'Guest GST'),
+                _mi('gst', Icons.receipt_outlined,
+                    _isInvoiceCreated ? 'Update Invoice GST' : 'Guest GST'),
                 const PopupMenuDivider(),
                 if ((_b['status']?.toString() ?? '').toLowerCase() != 'cancel')
                   _mi('cancel', Icons.cancel_outlined,
