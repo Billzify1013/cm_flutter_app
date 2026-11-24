@@ -1,7 +1,7 @@
 name: cm_flutter_app
 description: "Billzify - Hotel management app"
 publish_to: 'none'
-version: 1.0.66+66
+version: 1.0.67+67
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
